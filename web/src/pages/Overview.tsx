@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api, type Attempt, type TaskConfig, type RunStatus, type Note, type Skill, type LogData, type LogEntry } from "../lib/api";
 import { useSSE } from "../hooks/useSSE";
 import { useReplay } from "../hooks/useReplay";
@@ -11,6 +12,7 @@ import ReplayBar from "../components/ReplayBar";
 type SortKey = "score" | "agent_id" | "timestamp";
 
 export default function Overview() {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<TaskConfig | null>(null);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [status, setStatus] = useState<RunStatus | null>(null);
@@ -145,7 +147,7 @@ export default function Overview() {
                 <button
                   onClick={replay.start}
                   className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-muted transition-colors duration-100 text-muted-fg hover:text-foreground"
-                  title="Replay evolution"
+                  title={t("overview.tooltip_replay")}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M8 5v14l11-7z" />
@@ -155,7 +157,7 @@ export default function Overview() {
               <button
                 onClick={() => setChartExpanded(true)}
                 className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-muted transition-colors duration-100 text-muted-fg hover:text-foreground"
-                title="Expand chart"
+                title={t("overview.tooltip_expand")}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
@@ -183,10 +185,10 @@ export default function Overview() {
         <div className="mb-6">
           <div className="flex items-baseline justify-between mb-3">
             <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg">
-              Attempts
+              {t("overview.attempts")}
             </p>
             <p className="font-mono text-[11px] text-muted-fg">
-              {scored.length} scored / {displayAttempts.length} total
+              {t("overview.scored_total", { scored: scored.length, total: displayAttempts.length })}
             </p>
           </div>
 
@@ -194,22 +196,22 @@ export default function Overview() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <Th label="#" />
+                  <Th label={t("overview.table_rank")} />
                   <Th
-                    label="Score"
+                    label={t("overview.table_score")}
                     active={sortKey === "score"}
                     asc={sortAsc}
                     onClick={() => toggleSort("score")}
                   />
                   <Th
-                    label="Agent"
+                    label={t("overview.table_agent")}
                     active={sortKey === "agent_id"}
                     asc={sortAsc}
                     onClick={() => toggleSort("agent_id")}
                   />
-                  <Th label="Status" />
+                  <Th label={t("overview.table_status")} />
                   <Th
-                    label="Time"
+                    label={t("overview.table_time")}
                     active={sortKey === "timestamp"}
                     asc={sortAsc}
                     onClick={() => toggleSort("timestamp")}
@@ -239,7 +241,7 @@ export default function Overview() {
 
             {allSorted.length === 0 && (
               <p className="py-8 text-center font-mono text-xs text-muted-fg">
-                No attempts yet.
+                {t("overview.no_attempts")}
               </p>
             )}
 
@@ -249,8 +251,8 @@ export default function Overview() {
                 className="w-full py-2 font-mono text-[10px] tracking-widest uppercase text-muted-fg hover:text-foreground hover:bg-muted/50 transition-colors duration-100 border-t border-border"
               >
                 {tableExpanded
-                  ? "Show less"
-                  : `Show all ${allSorted.length} attempts`}
+                  ? t("overview.show_less")
+                  : t("overview.show_all", { count: allSorted.length })}
               </button>
             )}
           </div>
@@ -261,10 +263,10 @@ export default function Overview() {
             {/* Notes */}
             <div className="mb-6">
               <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-3">
-                Notes ({notes.length})
+                {t("overview.notes", { count: notes.length })}
               </p>
               {notes.length === 0 ? (
-                <p className="font-mono text-xs text-muted-fg">No notes yet.</p>
+                <p className="font-mono text-xs text-muted-fg">{t("overview.no_notes")}</p>
               ) : (
                 <div className="border border-border rounded-xl overflow-hidden">
                   {[...notes].reverse().slice(0, 5).map((note) => (
@@ -310,10 +312,10 @@ export default function Overview() {
             {/* Skills */}
             <div>
               <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-3">
-                Skills ({skills.length})
+                {t("overview.skills", { count: skills.length })}
               </p>
               {skills.length === 0 ? (
-                <p className="font-mono text-xs text-muted-fg">No skills yet.</p>
+                <p className="font-mono text-xs text-muted-fg">{t("overview.no_skills")}</p>
               ) : (
                 <div className="space-y-2">
                   {skills.map((skill) => (
@@ -346,7 +348,7 @@ export default function Overview() {
             {replayAgents.length > 0 && (
               <div>
                 <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-3">
-                  Agents
+                  {t("overview.agents")}
                 </p>
                 <div className="space-y-2">
                   {replayAgents.map((agent) => (
@@ -361,9 +363,9 @@ export default function Overview() {
                         <StatusBadge status={agent.last_status} />
                       </div>
                       <div className="font-mono text-[11px] text-muted-fg flex gap-3">
-                        <span>{agent.attempts} att</span>
+                        <span>{agent.attempts} {t("overview.attempts_short")}</span>
                         <span>
-                          best{" "}
+                          {t("overview.best_short")}{" "}
                           {agent.best_score != null
                             ? agent.best_score.toFixed(4)
                             : "---"}
@@ -379,7 +381,7 @@ export default function Overview() {
             {replayAgents.length > 0 && (
               <div>
                 <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-3">
-                  Recent Activity
+                  {t("overview.recent_activity")}
                 </p>
                 <div className="space-y-3">
                   {replayAgents.map((agent) => (
@@ -413,7 +415,7 @@ export default function Overview() {
 
             {displayAttempts.length === 0 && (
               <p className="py-8 text-center font-mono text-xs text-muted-fg">
-                Replaying...
+                {t("overview.replaying")}
               </p>
             )}
           </>
@@ -423,7 +425,7 @@ export default function Overview() {
             {status && status.agents.length > 0 && (
               <div>
                 <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-3">
-                  Agents
+                  {t("overview.agents")}
                 </p>
                 <div className="space-y-2">
                   {status.agents.map((agent) => (
@@ -438,10 +440,10 @@ export default function Overview() {
                         <StatusBadge status={agent.status} />
                       </div>
                       <div className="font-mono text-[11px] text-muted-fg flex gap-3">
-                        <span>{agent.attempts} att</span>
-                        <span>{agent.sessions} sess</span>
+                        <span>{agent.attempts} {t("overview.attempts_short")}</span>
+                        <span>{agent.sessions} {t("overview.sessions_short")}</span>
                         <span>
-                          best{" "}
+                          {t("overview.best_short")}{" "}
                           {agent.best_score != null
                             ? agent.best_score.toFixed(4)
                             : "---"}
@@ -459,8 +461,8 @@ export default function Overview() {
                         const totalIn = input + cacheRead + cacheCreation;
                         return (
                           <div className="font-mono text-[11px] text-muted-fg flex gap-3 mt-1">
-                            <span>{totalIn.toLocaleString()} in</span>
-                            <span>{output.toLocaleString()} out</span>
+                            <span>{totalIn.toLocaleString()} {t("overview.tokens_in")}</span>
+                            <span>{output.toLocaleString()} {t("overview.tokens_out")}</span>
                           </div>
                         );
                       })()}
@@ -474,7 +476,7 @@ export default function Overview() {
             {status && status.agents.length > 0 && (
               <div>
                 <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-3">
-                  Recent Activity
+                  {t("overview.recent_activity")}
                 </p>
                 <div className="space-y-3">
                   {status.agents.map((agent) => {
@@ -482,7 +484,7 @@ export default function Overview() {
                     if (entries.length === 0) return (
                       <div key={agent.agent_id} className="p-3 border border-border rounded-lg">
                         <span className="font-mono text-[11px] font-medium">{agent.agent_id}</span>
-                        <p className="font-mono text-[10px] text-muted-fg mt-1">Waiting for activity...</p>
+                        <p className="font-mono text-[10px] text-muted-fg mt-1">{t("overview.waiting_activity")}</p>
                       </div>
                     );
                     return (

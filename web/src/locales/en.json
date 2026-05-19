@@ -1,0 +1,99 @@
+{
+  "tabs": {
+    "overview": "Overview",
+    "knowledge": "Knowledge",
+    "logs": "Logs"
+  },
+  "header": {
+    "active": "{{count}} active",
+    "idle": "idle",
+    "stopped": "stopped",
+    "attempts_short": "att",
+    "best": "best",
+    "language": "Language"
+  },
+  "overview": {
+    "attempts": "Attempts",
+    "scored_total": "{{scored}} scored / {{total}} total",
+    "no_attempts": "No attempts yet.",
+    "show_less": "Show less",
+    "show_all": "Show all {{count}} attempts",
+    "notes": "Notes ({{count}})",
+    "no_notes": "No notes yet.",
+    "skills": "Skills ({{count}})",
+    "no_skills": "No skills yet.",
+    "agents": "Agents",
+    "recent_activity": "Recent Activity",
+    "waiting_activity": "Waiting for activity...",
+    "replaying": "Replaying...",
+    "attempts_short": "att",
+    "sessions_short": "sess",
+    "best_short": "best",
+    "tokens_in": "in",
+    "tokens_out": "out",
+    "tooltip_replay": "Replay evolution",
+    "tooltip_expand": "Expand chart",
+    "table_rank": "#",
+    "table_score": "Score",
+    "table_agent": "Agent",
+    "table_status": "Status",
+    "table_time": "Time"
+  },
+  "attempt": {
+    "title_score": "Score",
+    "title_agent": "Agent",
+    "title_class": "Class",
+    "title_status": "Status",
+    "title_commit": "Commit",
+    "title_time": "Time",
+    "title_parent": "Parent",
+    "title_feedback": "Feedback",
+    "no_title": "(no title)",
+    "view_full": "View full diff"
+  },
+  "chart": {
+    "score_label": "Score",
+    "best_label": "Best",
+    "linear": "Linear",
+    "log": "Log",
+    "all": "All",
+    "last_50": "Last 50",
+    "last_20": "Last 20",
+    "scale": "Scale",
+    "x_axis": "X-Axis",
+    "view": "View",
+    "range": "Range",
+    "index": "Index",
+    "time": "Time"
+  },
+  "replay": {
+    "stop": "Stop",
+    "speed": "Speed",
+    "of": "of"
+  },
+  "status": {
+    "active": "ACTIVE",
+    "idle": "IDLE",
+    "stopped": "STOPPED",
+    "improved": "IMPROVED",
+    "regressed": "REGRESSED",
+    "grader_error": "GRADER ERROR",
+    "tune": "TUNE",
+    "real": "REAL"
+  },
+  "knowledge": {
+    "title": "Knowledge",
+    "no_data": "No knowledge yet."
+  },
+  "logs": {
+    "title": "Logs",
+    "no_logs": "No logs yet.",
+    "select_agent": "Select an agent",
+    "turn": "Turn"
+  },
+  "runs": {
+    "select_run": "Select run",
+    "current": "Current",
+    "no_runs": "No runs yet."
+  }
+}

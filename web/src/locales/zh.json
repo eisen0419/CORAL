@@ -1,0 +1,99 @@
+{
+  "tabs": {
+    "overview": "总览",
+    "knowledge": "知识库",
+    "logs": "日志"
+  },
+  "header": {
+    "active": "{{count}} 个活跃",
+    "idle": "空闲",
+    "stopped": "已停止",
+    "attempts_short": "次",
+    "best": "最佳",
+    "language": "语言"
+  },
+  "overview": {
+    "attempts": "尝试记录",
+    "scored_total": "已评分 {{scored}} / 共 {{total}}",
+    "no_attempts": "暂无尝试记录",
+    "show_less": "收起",
+    "show_all": "显示全部 {{count}} 次尝试",
+    "notes": "笔记 ({{count}})",
+    "no_notes": "暂无笔记",
+    "skills": "技能 ({{count}})",
+    "no_skills": "暂无技能",
+    "agents": "智能体",
+    "recent_activity": "最近动态",
+    "waiting_activity": "等待动态...",
+    "replaying": "回放中...",
+    "attempts_short": "次",
+    "sessions_short": "会话",
+    "best_short": "最佳",
+    "tokens_in": "输入",
+    "tokens_out": "输出",
+    "tooltip_replay": "回放进化过程",
+    "tooltip_expand": "展开图表",
+    "table_rank": "排名",
+    "table_score": "分数",
+    "table_agent": "智能体",
+    "table_status": "状态",
+    "table_time": "时间"
+  },
+  "attempt": {
+    "title_score": "分数",
+    "title_agent": "智能体",
+    "title_class": "类别",
+    "title_status": "状态",
+    "title_commit": "提交",
+    "title_time": "时间",
+    "title_parent": "父提交",
+    "title_feedback": "评测反馈",
+    "no_title": "（无标题）",
+    "view_full": "查看完整 diff"
+  },
+  "chart": {
+    "score_label": "分数",
+    "best_label": "最佳",
+    "linear": "线性",
+    "log": "对数",
+    "all": "全部",
+    "last_50": "最近 50",
+    "last_20": "最近 20",
+    "scale": "刻度",
+    "x_axis": "X 轴",
+    "view": "视图",
+    "range": "范围",
+    "index": "索引",
+    "time": "时间"
+  },
+  "replay": {
+    "stop": "停止",
+    "speed": "速度",
+    "of": "/"
+  },
+  "status": {
+    "active": "活跃",
+    "idle": "空闲",
+    "stopped": "已停止",
+    "improved": "提升",
+    "regressed": "回退",
+    "grader_error": "评测错误",
+    "tune": "调优",
+    "real": "正式"
+  },
+  "knowledge": {
+    "title": "知识库",
+    "no_data": "暂无知识库内容"
+  },
+  "logs": {
+    "title": "日志",
+    "no_logs": "暂无日志",
+    "select_agent": "选择智能体",
+    "turn": "回合"
+  },
+  "runs": {
+    "select_run": "选择运行",
+    "current": "当前",
+    "no_runs": "暂无运行记录"
+  }
+}

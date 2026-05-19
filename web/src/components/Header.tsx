@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api, type RunStatus } from "../lib/api";
 import { useSSE } from "../hooks/useSSE";
+import { toggleLanguage, currentLanguage } from "../lib/i18n";
 import RunSelector from "./RunSelector";
 
 type Tab = "overview" | "knowledge" | "logs";
@@ -10,14 +12,10 @@ interface Props {
   onTabChange: (tab: Tab) => void;
 }
 
-const tabs: { key: Tab; label: string }[] = [
-  { key: "overview", label: "Overview" },
-  { key: "knowledge", label: "Knowledge" },
-  { key: "logs", label: "Logs" },
-];
-
 export default function Header({ activeTab, onTabChange }: Props) {
+  const { t, i18n } = useTranslation();
   const [status, setStatus] = useState<RunStatus | null>(null);
+  const [, forceRender] = useState(0);
 
   const refresh = () => {
     api.status().then(setStatus).catch(() => {});
@@ -29,6 +27,21 @@ export default function Header({ activeTab, onTabChange }: Props) {
     "attempt:update": refresh,
     "eval:update": refresh,
   });
+
+  // re-render the language toggle label when locale changes
+  useEffect(() => {
+    const handler = () => forceRender((n) => n + 1);
+    i18n.on("languageChanged", handler);
+    return () => {
+      i18n.off("languageChanged", handler);
+    };
+  }, [i18n]);
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "overview", label: t("tabs.overview") },
+    { key: "knowledge", label: t("tabs.knowledge") },
+    { key: "logs", label: t("tabs.logs") },
+  ];
 
   const activeAgents = status?.agents.filter((a) => a.status === "active").length ?? 0;
 
@@ -43,17 +56,17 @@ export default function Header({ activeTab, onTabChange }: Props) {
 
       {/* Tab pills */}
       <nav className="flex items-center gap-1 ml-auto">
-        {tabs.map((t) => (
+        {tabs.map((tab) => (
           <button
-            key={t.key}
-            onClick={() => onTabChange(t.key)}
+            key={tab.key}
+            onClick={() => onTabChange(tab.key)}
             className={`px-4 py-1.5 text-[13px] font-body rounded-lg transition-colors duration-100 ${
-              activeTab === t.key
+              activeTab === tab.key
                 ? "bg-foreground text-background font-medium"
                 : "text-muted-fg hover:text-foreground hover:bg-muted"
             }`}
           >
-            {t.label}
+            {tab.label}
           </button>
         ))}
       </nav>
@@ -69,19 +82,28 @@ export default function Header({ activeTab, onTabChange }: Props) {
                 }`}
               />
               {activeAgents > 0
-                ? `${activeAgents} active`
+                ? t("header.active", { count: activeAgents })
                 : status.manager_alive
-                ? "idle"
-                : "stopped"}
+                ? t("header.idle")
+                : t("header.stopped")}
             </span>
-            <span>{status.total_attempts} att</span>
+            <span>{status.total_attempts} {t("header.attempts_short")}</span>
             {status.best_score != null && (
-              <span>best {status.best_score.toFixed(4)}</span>
+              <span>{t("header.best")} {status.best_score.toFixed(4)}</span>
             )}
             <span>#{status.eval_count}</span>
           </>
         )}
       </div>
+
+      {/* Language toggle */}
+      <button
+        onClick={toggleLanguage}
+        title={t("header.language")}
+        className="shrink-0 px-2 py-1 text-[11px] font-mono rounded-md border border-border text-muted-fg hover:text-foreground hover:bg-muted transition-colors duration-100"
+      >
+        {currentLanguage() === "zh" ? "中" : "EN"}
+      </button>
     </header>
   );
 }
