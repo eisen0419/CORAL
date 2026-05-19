@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import ScoreChart from "./ScoreChart";
 import type { Attempt } from "../lib/api";
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function ChartModal({ attempts, direction, onClose }: Props) {
+  const { t } = useTranslation();
   // Close on Esc
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -40,16 +42,16 @@ export default function ChartModal({ attempts, direction, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-2.5 border-b border-border shrink-0">
           <span className="font-mono text-[11px] text-muted-fg uppercase tracking-widest">
-            Score Chart — {attempts.filter((a) => a.score !== null).length} scored attempts
+            {t("chart_modal.title", { count: attempts.filter((a) => a.score !== null).length })}
           </span>
           <div className="flex items-center gap-2">
             <span className="font-mono text-[10px] text-muted-fg">
-              Scroll to zoom / Drag to pan
+              {t("chart_modal.help")}
             </span>
             <button
               onClick={onClose}
               className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-muted transition-colors duration-100 text-muted-fg hover:text-foreground"
-              title="Close (Esc)"
+              title={t("chart_modal.close")}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

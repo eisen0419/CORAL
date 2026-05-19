@@ -46,6 +46,7 @@
     "title_status": "状态",
     "title_commit": "提交",
     "title_time": "时间",
+    "title_timestamp": "时间戳",
     "title_parent": "父提交",
     "title_feedback": "评测反馈",
     "no_title": "（无标题）",
@@ -80,10 +81,20 @@
     "reset_zoom": "重置缩放",
     "log_requires_positive": "对数刻度要求所有值为正数"
   },
+  "chart_modal": {
+    "title": "分数图表 — 已评分 {{count}} 次",
+    "help": "滚轮缩放 / 拖动平移",
+    "close": "关闭 (Esc)"
+  },
   "replay": {
     "stop": "停止",
     "speed": "速度",
-    "of": "/"
+    "of": "/",
+    "step_back": "上一步 (←)",
+    "pause": "暂停 (Space)",
+    "play": "播放 (Space)",
+    "step_forward": "下一步 (→)",
+    "exit": "退出回放 (Esc)"
   },
   "status": {
     "active": "活跃",
@@ -96,18 +107,56 @@
     "timeout": "超时"
   },
   "knowledge": {
-    "title": "知识库",
-    "no_data": "暂无知识库内容"
+    "notes": "笔记 ({{count}})",
+    "skills": "技能 ({{count}})",
+    "no_notes_title": "暂无笔记",
+    "no_notes_hint": "智能体会在评测后记录学习内容。当智能体发现规律、识别失败模式、改进策略时，笔记会出现在这里。",
+    "no_skills_title": "暂无技能",
+    "no_skills_hint": "智能体把可复用的工具和方法打包为技能。当智能体构建出可在团队间共享的方案时，技能会出现在这里。",
+    "by": "作者：",
+    "cat_research": "研究",
+    "cat_experiments": "实验",
+    "cat_raw": "原始资料",
+    "cat_other": "其他",
+    "category_count": "{{category}} ({{count}})"
   },
   "logs": {
-    "title": "日志",
-    "no_logs": "暂无日志",
-    "select_agent": "选择智能体",
-    "turn": "回合"
+    "agents": "智能体",
+    "no_agents": "暂无智能体",
+    "attempts_long": "尝试 {{count}} 次",
+    "sessions_long": "{{count}} 个会话",
+    "best": "最佳",
+    "recent_attempts": "最近尝试",
+    "select_agent": "选择一个智能体查看日志。",
+    "loading": "加载日志中...",
+    "no_entries": "暂无日志记录。",
+    "turns": "回合",
+    "session_single": "会话",
+    "sessions_plural": "会话",
+    "session_n": "第 {{n}} 个会话",
+    "session_complete": "会话结束",
+    "tokens_in": "输入",
+    "tokens_out": "输出",
+    "cache_r": "缓存读",
+    "cache_w": "写",
+    "think": "思考",
+    "result": "结果",
+    "subagent": "子智能体",
+    "done": "完成",
+    "tokens": "词元",
+    "time_just_now": "刚刚",
+    "time_minutes_ago": "{{n}} 分钟前",
+    "time_hours_ago": "{{n}} 小时前",
+    "time_days_ago": "{{n}} 天前",
+    "skills_label": "技能",
+    "agents_label": "智能体",
+    "tools_label": "工具"
   },
   "runs": {
     "select_run": "选择运行",
     "current": "当前",
+    "latest": "最新",
+    "attempts_short": "次",
     "no_runs": "暂无运行记录"
   }
 }

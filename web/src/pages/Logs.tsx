@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api, type LogData, type LogTurn, type LogSession, type LogEntry, type RunStatus, type Attempt } from "../lib/api";
 import { useSSE } from "../hooks/useSSE";
 import StatusBadge from "../components/StatusBadge";
 
 export default function Logs() {
+  const { t } = useTranslation();
   const [agentList, setAgentList] = useState<string[]>([]);
   const [status, setStatus] = useState<RunStatus | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
@@ -107,11 +109,11 @@ export default function Logs() {
       {/* LEFT COLUMN — Agent list + per-agent attempts */}
       <div className="overflow-y-auto border-r border-border p-5">
         <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-3">
-          Agents
+          {t("logs.agents")}
         </p>
 
         {agentList.length === 0 ? (
-          <p className="font-mono text-xs text-muted-fg">No agents</p>
+          <p className="font-mono text-xs text-muted-fg">{t("logs.no_agents")}</p>
         ) : (
           <div className="space-y-2">
             {agentList.map((id) => {
@@ -139,10 +141,10 @@ export default function Logs() {
                         isSelected ? "text-background/60" : "text-muted-fg"
                       }`}
                     >
-                      <span>{agent.attempts} attempts</span>
-                      <span>{agent.sessions} sessions</span>
+                      <span>{t("logs.attempts_long", { count: agent.attempts })}</span>
+                      <span>{t("logs.sessions_long", { count: agent.sessions })}</span>
                       <span>
-                        best{" "}
+                        {t("logs.best")}{" "}
                         {agent.best_score != null
                           ? agent.best_score.toFixed(4)
                           : "---"}
@@ -167,7 +169,7 @@ export default function Logs() {
         {selectedAgent && agentAttempts.length > 0 && (
           <div className="mt-6">
             <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-3">
-              Recent Attempts
+              {t("logs.recent_attempts")}
             </p>
             <div className="border border-border rounded-xl overflow-hidden">
               {[...agentAttempts].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 10).map((a) => (
@@ -180,7 +182,7 @@ export default function Logs() {
                   </span>
                   <span className="shrink-0"><StatusBadge status={a.status} /></span>
                   <span className="font-mono text-[10px] text-muted-fg ml-auto whitespace-nowrap">
-                    {formatRelativeTime(a.timestamp)}
+                    {formatRelativeTime(a.timestamp, t)}
                   </span>
                 </div>
               ))}
@@ -193,18 +195,18 @@ export default function Logs() {
       <div ref={logPanelRef} className="overflow-y-auto p-5">
         {!selectedAgent ? (
           <p className="font-mono text-xs text-muted-fg py-6">
-            Select an agent to view logs.
+            {t("logs.select_agent")}
           </p>
         ) : loading && !logData ? (
-          <p className="font-mono text-xs text-muted-fg py-6">Loading logs...</p>
+          <p className="font-mono text-xs text-muted-fg py-6">{t("logs.loading")}</p>
         ) : !logData || logData.turns.length === 0 ? (
-          <p className="font-mono text-xs text-muted-fg py-6">No log entries.</p>
+          <p className="font-mono text-xs text-muted-fg py-6">{t("logs.no_entries")}</p>
         ) : (
           <>
             {/* Stats bar */}
             <div className="flex items-center gap-4 mb-4 font-mono text-[11px] text-muted-fg flex-wrap">
-              <span>{logData.turns.length} turns</span>
-              <span>{logData.sessions?.length ?? 1} session{(logData.sessions?.length ?? 1) !== 1 ? "s" : ""}</span>
+              <span>{logData.turns.length} {t("logs.turns")}</span>
+              <span>{logData.sessions?.length ?? 1} {(logData.sessions?.length ?? 1) !== 1 ? t("logs.sessions_plural") : t("logs.session_single")}</span>
               {logData.agent_meta ? (
                 <AgentMetaSummary meta={logData.agent_meta} />
               ) : (
@@ -230,36 +232,40 @@ export default function Logs() {
   );
 }
 
-function formatRelativeTime(iso: string): string {
+function formatRelativeTime(
+  iso: string,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   try {
     const diff = Date.now() - new Date(iso).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
+    if (mins < 1) return t("logs.time_just_now");
+    if (mins < 60) return t("logs.time_minutes_ago", { n: mins });
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
+    if (hrs < 24) return t("logs.time_hours_ago", { n: hrs });
+    return t("logs.time_days_ago", { n: Math.floor(hrs / 24) });
   } catch {
     return iso.slice(0, 16);
   }
 }
 
 function TokenSummary({ turns }: { turns: LogTurn[] }) {
+  const { t } = useTranslation();
   let input = 0, output = 0, cacheRead = 0, cacheCreation = 0;
-  for (const t of turns) {
-    input += t.usage.input_tokens || 0;
-    output += t.usage.output_tokens || 0;
-    cacheRead += t.usage.cache_read || 0;
-    cacheCreation += t.usage.cache_creation || 0;
+  for (const turn of turns) {
+    input += turn.usage.input_tokens || 0;
+    output += turn.usage.output_tokens || 0;
+    cacheRead += turn.usage.cache_read || 0;
+    cacheCreation += turn.usage.cache_creation || 0;
   }
   const totalIn = input + cacheRead + cacheCreation;
   return (
     <>
-      <span>in {totalIn.toLocaleString()}</span>
-      <span>out {output.toLocaleString()}</span>
+      <span>{t("logs.tokens_in")} {totalIn.toLocaleString()}</span>
+      <span>{t("logs.tokens_out")} {output.toLocaleString()}</span>
       {(cacheRead > 0 || cacheCreation > 0) && (
         <span className="opacity-60">
-          (cache r {cacheRead.toLocaleString()} / w {cacheCreation.toLocaleString()})
+          ({t("logs.cache_r")} {cacheRead.toLocaleString()} / {t("logs.cache_w")} {cacheCreation.toLocaleString()})
         </span>
       )}
     </>
@@ -275,6 +281,7 @@ function SessionBlock({
   totalSessions: number;
   defaultCollapsed?: boolean;
 }) {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
   return (
@@ -284,10 +291,10 @@ function SessionBlock({
         className="w-full flex items-center gap-2 py-2 px-3 bg-foreground text-background font-mono text-[11px] tracking-widest uppercase hover:opacity-90 transition-opacity rounded-t-lg"
       >
         <span>
-          Session {session.session_index + 1}
+          {t("logs.session_n", { n: session.session_index + 1 })}
           {totalSessions > 1 ? ` / ${totalSessions}` : ""}
         </span>
-        <span className="opacity-60">{session.turns.length} turns</span>
+        <span className="opacity-60">{session.turns.length} {t("logs.turns")}</span>
         {session.meta?.duration_ms != null && session.meta.duration_ms > 0 && (
           <span className="opacity-60 normal-case tracking-normal">
             {(session.meta.duration_ms / 1000).toFixed(0)}s
@@ -310,6 +317,7 @@ function SessionBlock({
 }
 
 function TurnCard({ turn }: { turn: LogTurn }) {
+  const { t } = useTranslation();
   const [expandThinking, setExpandThinking] = useState(false);
 
   return (
@@ -330,7 +338,7 @@ function TurnCard({ turn }: { turn: LogTurn }) {
           {entry.type === "thinking" && (
             <div className="border-l-2 border-border pl-3">
               <div className="font-mono text-[11px] text-muted-fg flex items-center gap-1.5">
-                <span className="tracking-widest uppercase">Think</span>
+                <span className="tracking-widest uppercase">{t("logs.think")}</span>
                 <button
                   onClick={() => setExpandThinking(!expandThinking)}
                   className="hover:text-foreground underline decoration-dotted underline-offset-2"
@@ -465,13 +473,14 @@ function CoralPrompt({ content, source, taskName }: {
 }
 
 function ToolResult({ content }: { content: string }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const isLong = content.split("\n").length > 5;
 
   return (
     <div className="ml-4 border-l border-border pl-3">
       <div className="font-mono text-[11px] text-muted-fg flex items-center gap-1.5">
-        <span>Result {isLong && `(${content.split("\n").length}L)`}</span>
+        <span>{t("logs.result")} {isLong && `(${content.split("\n").length}L)`}</span>
         {isLong && (
           <button
             onClick={() => setExpanded(!expanded)}
@@ -493,6 +502,7 @@ function ToolResult({ content }: { content: string }) {
 }
 
 function SystemInit({ entry }: { entry: LogEntry }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const skills = entry.details?.skills as string[] | undefined;
   const agents = entry.details?.agents as string[] | undefined;
@@ -518,7 +528,7 @@ function SystemInit({ entry }: { entry: LogEntry }) {
         <div className="mt-1.5 ml-2 space-y-1">
           {skills && skills.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-muted-fg/60 shrink-0">skills:</span>
+              <span className="text-muted-fg/60 shrink-0">{t("logs.skills_label")}:</span>
               {skills.map((s) => (
                 <span key={s} className="bg-muted px-1.5 py-0.5 rounded text-[10px]">{s}</span>
               ))}
@@ -526,7 +536,7 @@ function SystemInit({ entry }: { entry: LogEntry }) {
           )}
           {agents && agents.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-muted-fg/60 shrink-0">agents:</span>
+              <span className="text-muted-fg/60 shrink-0">{t("logs.agents_label")}:</span>
               {agents.map((a) => (
                 <span key={a} className="bg-muted px-1.5 py-0.5 rounded text-[10px]">{a}</span>
               ))}
@@ -534,7 +544,7 @@ function SystemInit({ entry }: { entry: LogEntry }) {
           )}
           {tools && tools.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-muted-fg/60 shrink-0">tools:</span>
+              <span className="text-muted-fg/60 shrink-0">{t("logs.tools_label")}:</span>
               {tools.map((t) => (
                 <span key={t} className="bg-muted px-1.5 py-0.5 rounded text-[10px]">{t}</span>
               ))}
@@ -547,10 +557,11 @@ function SystemInit({ entry }: { entry: LogEntry }) {
 }
 
 function SubagentStart({ entry }: { entry: LogEntry }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-start gap-2 p-2 border border-border bg-muted/50 rounded-lg">
       <span className="font-mono text-[11px] bg-foreground text-background px-1.5 py-0.5 rounded-md shrink-0">
-        Subagent
+        {t("logs.subagent")}
       </span>
       <span className="font-mono text-[11px] text-muted-fg truncate">
         {entry.content}
@@ -578,12 +589,13 @@ function SubagentProgress({ entry }: { entry: LogEntry }) {
 }
 
 function SubagentDone({ entry }: { entry: LogEntry }) {
+  const { t } = useTranslation();
   const totalTokens = entry.details?.total_tokens as number | undefined;
   const toolUses = entry.details?.tool_uses as number | undefined;
   const durationMs = entry.details?.duration_ms as number | undefined;
 
   const stats = [
-    toolUses != null ? `${toolUses} tools` : null,
+    toolUses != null ? `${toolUses} ${t("logs.tools_label")}` : null,
     totalTokens != null ? `${totalTokens.toLocaleString()} tok` : null,
     durationMs != null ? `${(durationMs / 1000).toFixed(1)}s` : null,
   ].filter(Boolean).join(" · ");
@@ -591,7 +603,7 @@ function SubagentDone({ entry }: { entry: LogEntry }) {
   return (
     <div className="flex items-start gap-2 p-2 border border-border bg-muted/50 rounded-lg">
       <span className="font-mono text-[11px] bg-foreground text-background px-1.5 py-0.5 rounded-md shrink-0">
-        Done
+        {t("logs.done")}
       </span>
       <span className="font-mono text-[11px] text-muted-fg truncate">
         {entry.content}{stats ? ` — ${stats}` : ""}
@@ -601,6 +613,7 @@ function SubagentDone({ entry }: { entry: LogEntry }) {
 }
 
 function CompactBoundary({ entry }: { entry: LogEntry }) {
+  const { t } = useTranslation();
   const preTokens = entry.details?.pre_tokens as number | undefined;
 
   return (
@@ -608,7 +621,7 @@ function CompactBoundary({ entry }: { entry: LogEntry }) {
       <div className="flex-1 border-t border-dashed border-amber-500/40" />
       <span className="font-mono text-[10px] text-amber-600 dark:text-amber-400 shrink-0">
         {entry.content}
-        {preTokens ? ` — ${preTokens.toLocaleString()} tokens` : ""}
+        {preTokens ? ` — ${preTokens.toLocaleString()} ${t("logs.tokens")}` : ""}
       </span>
       <div className="flex-1 border-t border-dashed border-amber-500/40" />
     </div>
@@ -616,6 +629,7 @@ function CompactBoundary({ entry }: { entry: LogEntry }) {
 }
 
 function ResultEntry({ entry }: { entry: LogEntry }) {
+  const { t } = useTranslation();
   const duration = entry.details?.duration_ms as number | undefined;
   const numTurns = entry.details?.num_turns as number | undefined;
   const stopReason = entry.details?.stop_reason as string | undefined;
@@ -623,10 +637,10 @@ function ResultEntry({ entry }: { entry: LogEntry }) {
   return (
     <div className="border border-border rounded-lg p-2.5 bg-muted/30">
       <div className="flex items-center gap-3 font-mono text-[11px] flex-wrap">
-        <span className="font-medium">Session Complete</span>
+        <span className="font-medium">{t("logs.session_complete")}</span>
         {stopReason && <span className="text-muted-fg">{stopReason}</span>}
         <span className="text-muted-fg ml-auto flex gap-3">
-          {numTurns != null && <span>{numTurns} turns</span>}
+          {numTurns != null && <span>{numTurns} {t("logs.turns")}</span>}
           {duration != null && <span>{(duration / 1000).toFixed(0)}s</span>}
         </span>
       </div>
@@ -640,14 +654,15 @@ function ResultEntry({ entry }: { entry: LogEntry }) {
 }
 
 function AgentMetaSummary({ meta }: { meta: NonNullable<LogData["agent_meta"]> }) {
+  const { t } = useTranslation();
   const usage = meta.usage || {};
   const totalIn = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
   const totalOut = usage.output_tokens || 0;
 
   return (
     <>
-      <span>in {totalIn.toLocaleString()}</span>
-      <span>out {totalOut.toLocaleString()}</span>
+      <span>{t("logs.tokens_in")} {totalIn.toLocaleString()}</span>
+      <span>{t("logs.tokens_out")} {totalOut.toLocaleString()}</span>
       {meta.duration_ms != null && meta.duration_ms > 0 && (
         <span>{(meta.duration_ms / 60000).toFixed(1)}min</span>
       )}

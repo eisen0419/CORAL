@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api, type RunsResponse } from "../lib/api";
 
 export default function RunSelector() {
@@ -139,10 +140,12 @@ function RunList({
   switching: boolean;
   onSwitch: (task: string, run: string) => void;
 }) {
+  const { t } = useTranslation();
+
   if (!task || task.runs.length === 0) {
     return (
       <p className="py-4 text-center font-mono text-[11px] text-muted-fg">
-        No runs found.
+        {t("runs.no_runs")}
       </p>
     );
   }
@@ -170,16 +173,16 @@ function RunList({
               {formatTimestamp(run.timestamp)}
             </span>
             <span className="font-mono text-[10px] text-muted-fg">
-              {run.attempts} att
+              {run.attempts} {t("runs.attempts_short")}
             </span>
             {run.is_latest && (
               <span className="font-mono text-[9px] text-muted-fg bg-muted px-1 py-0.5 rounded">
-                latest
+                {t("runs.latest")}
               </span>
             )}
             {isCurrent && (
               <span className="font-mono text-[9px] text-background bg-foreground px-1 py-0.5 rounded">
-                current
+                {t("runs.current")}
               </span>
             )}
           </button>

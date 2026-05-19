@@ -46,6 +46,7 @@
     "title_status": "Status",
     "title_commit": "Commit",
     "title_time": "Time",
+    "title_timestamp": "Timestamp",
     "title_parent": "Parent",
     "title_feedback": "Feedback",
     "no_title": "(no title)",
@@ -80,10 +81,20 @@
     "reset_zoom": "Reset Zoom",
     "log_requires_positive": "Log scale requires all positive values"
   },
+  "chart_modal": {
+    "title": "Score Chart — {{count}} scored attempts",
+    "help": "Scroll to zoom / Drag to pan",
+    "close": "Close (Esc)"
+  },
   "replay": {
     "stop": "Stop",
     "speed": "Speed",
-    "of": "of"
+    "of": "of",
+    "step_back": "Step back (←)",
+    "pause": "Pause (Space)",
+    "play": "Play (Space)",
+    "step_forward": "Step forward (→)",
+    "exit": "Exit replay (Esc)"
   },
   "status": {
     "active": "Active",
@@ -96,18 +107,56 @@
     "timeout": "Timeout"
   },
   "knowledge": {
-    "title": "Knowledge",
-    "no_data": "No knowledge yet."
+    "notes": "Notes ({{count}})",
+    "skills": "Skills ({{count}})",
+    "no_notes_title": "No notes yet",
+    "no_notes_hint": "Agents document learnings after evaluations. Notes appear here as agents discover patterns, identify failure modes, and refine their strategies.",
+    "no_skills_title": "No skills yet",
+    "no_skills_hint": "Agents package reusable tools and techniques as skills. Skills appear here as agents build solutions that can be shared across the team.",
+    "by": "By:",
+    "cat_research": "Research",
+    "cat_experiments": "Experiments",
+    "cat_raw": "Raw Sources",
+    "cat_other": "Other",
+    "category_count": "{{category}} ({{count}})"
   },
   "logs": {
-    "title": "Logs",
-    "no_logs": "No logs yet.",
-    "select_agent": "Select an agent",
-    "turn": "Turn"
+    "agents": "Agents",
+    "no_agents": "No agents",
+    "attempts_long": "{{count}} attempts",
+    "sessions_long": "{{count}} sessions",
+    "best": "best",
+    "recent_attempts": "Recent Attempts",
+    "select_agent": "Select an agent to view logs.",
+    "loading": "Loading logs...",
+    "no_entries": "No log entries.",
+    "turns": "turns",
+    "session_single": "session",
+    "sessions_plural": "sessions",
+    "session_n": "Session {{n}}",
+    "session_complete": "Session Complete",
+    "tokens_in": "in",
+    "tokens_out": "out",
+    "cache_r": "cache r",
+    "cache_w": "w",
+    "think": "Think",
+    "result": "Result",
+    "subagent": "Subagent",
+    "done": "Done",
+    "tokens": "tokens",
+    "time_just_now": "just now",
+    "time_minutes_ago": "{{n}}m ago",
+    "time_hours_ago": "{{n}}h ago",
+    "time_days_ago": "{{n}}d ago",
+    "skills_label": "skills",
+    "agents_label": "agents",
+    "tools_label": "tools"
   },
   "runs": {
     "select_run": "Select run",
-    "current": "Current",
-    "no_runs": "No runs yet."
+    "current": "current",
+    "latest": "latest",
+    "attempts_short": "att",
+    "no_runs": "No runs found."
   }
 }

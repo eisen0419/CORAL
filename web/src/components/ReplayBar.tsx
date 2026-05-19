@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import type { ReplayState } from "../hooks/useReplay";
 import { REPLAY_SPEEDS } from "../hooks/useReplay";
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export default function ReplayBar({ replay }: Props) {
+  const { t } = useTranslation();
   const { togglePlay, stepBack, stepForward, stop } = replay;
 
   useEffect(() => {
@@ -68,7 +70,7 @@ export default function ReplayBar({ replay }: Props) {
               <button
                 onClick={replay.stepBack}
                 className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-background/15 transition-colors"
-                title="Step back (←)"
+                title={t("replay.step_back")}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
@@ -78,7 +80,7 @@ export default function ReplayBar({ replay }: Props) {
               <button
                 onClick={replay.togglePlay}
                 className="w-8 h-8 flex items-center justify-center rounded-lg bg-background/15 hover:bg-background/25 transition-colors"
-                title={replay.playing ? "Pause (Space)" : "Play (Space)"}
+                title={replay.playing ? t("replay.pause") : t("replay.play")}
               >
                 {replay.playing ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -94,7 +96,7 @@ export default function ReplayBar({ replay }: Props) {
               <button
                 onClick={replay.stepForward}
                 className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-background/15 transition-colors"
-                title="Step forward (→)"
+                title={t("replay.step_forward")}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
@@ -133,7 +135,7 @@ export default function ReplayBar({ replay }: Props) {
             {/* Speed */}
             <div className="flex items-center gap-0.5 ml-auto">
               <span className="font-mono text-[9px] uppercase tracking-widest opacity-40 mr-1.5">
-                Speed
+                {t("replay.speed")}
               </span>
               {REPLAY_SPEEDS.map((s) => (
                 <button
@@ -154,7 +156,7 @@ export default function ReplayBar({ replay }: Props) {
             <button
               onClick={replay.stop}
               className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-background/15 transition-colors ml-2"
-              title="Exit replay (Esc)"
+              title={t("replay.exit")}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" d="M18 6L6 18M6 6l12 12" />

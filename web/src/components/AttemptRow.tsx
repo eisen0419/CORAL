@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { Attempt } from "../lib/api";
 import StatusBadge from "./StatusBadge";
 
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function AttemptRow({ attempt: a, rank, expanded, onToggle, highlight }: Props) {
+  const { t } = useTranslation();
   return (
     <>
       <tr
@@ -44,26 +46,26 @@ export default function AttemptRow({ attempt: a, rank, expanded, onToggle, highl
 
               {/* Metadata grid */}
               <div className="grid grid-cols-2 gap-x-8 gap-y-3 mb-4">
-                <Field label="Score">
+                <Field label={t("attempt.title_score")}>
                   <span className="font-display text-lg font-bold">
                     {a.score != null ? String(a.score) : "---"}
                   </span>
                 </Field>
-                <Field label="Agent">
+                <Field label={t("attempt.title_agent")}>
                   <span className="font-mono text-[13px]">{a.agent_id}</span>
                 </Field>
-                <Field label="Timestamp">
+                <Field label={t("attempt.title_timestamp")}>
                   <span className="font-mono text-[13px]">
                     {new Date(a.timestamp).toLocaleString()}
                   </span>
                 </Field>
-                <Field label="Status">
+                <Field label={t("attempt.title_status")}>
                   <StatusBadge status={a.status} />
                 </Field>
-                <Field label="Commit">
+                <Field label={t("attempt.title_commit")}>
                   <span className="font-mono text-[13px]">{a.commit_hash}</span>
                 </Field>
-                <Field label="Parent">
+                <Field label={t("attempt.title_parent")}>
                   <span className="font-mono text-[13px] text-muted-fg">
                     {a.parent_hash ? a.parent_hash.slice(0, 12) + "..." : "---"}
                   </span>
@@ -74,7 +76,7 @@ export default function AttemptRow({ attempt: a, rank, expanded, onToggle, highl
               {a.feedback && (
                 <div>
                   <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-2">
-                    Feedback
+                    {t("attempt.title_feedback")}
                   </p>
                   <div className="border border-border rounded-lg p-4 bg-background">
                     <pre className="font-mono text-xs whitespace-pre-wrap leading-relaxed">

@@ -1,16 +1,18 @@
 import { useEffect, useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { api, type Note, type Skill } from "../lib/api";
 import { useSSE } from "../hooks/useSSE";
 
 const CATEGORY_ORDER = ["research", "experiments", "other", "raw"];
-const CATEGORY_LABELS: Record<string, string> = {
-  research: "Research",
-  experiments: "Experiments",
-  raw: "Raw Sources",
-  other: "Other",
+const CATEGORY_KEYS: Record<string, string> = {
+  research: "knowledge.cat_research",
+  experiments: "knowledge.cat_experiments",
+  raw: "knowledge.cat_raw",
+  other: "knowledge.cat_other",
 };
 
 export default function Knowledge() {
+  const { t } = useTranslation();
   const [notes, setNotes] = useState<Note[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [expandedNote, setExpandedNote] = useState<number | null>(null);
@@ -46,18 +48,16 @@ export default function Knowledge() {
       {/* LEFT COLUMN — Notes */}
       <div className="overflow-y-auto border-r border-border p-5">
         <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-3">
-          Notes ({notes.length})
+          {t("knowledge.notes", { count: notes.length })}
         </p>
 
         {notes.length === 0 ? (
           <div className="border border-border rounded-xl p-5">
             <p className="font-display text-[14px] font-semibold mb-1.5">
-              No notes yet
+              {t("knowledge.no_notes_title")}
             </p>
             <p className="font-body text-[12px] text-muted-fg leading-relaxed">
-              Agents document learnings after evaluations. Notes appear here as
-              agents discover patterns, identify failure modes, and refine their
-              strategies.
+              {t("knowledge.no_notes_hint")}
             </p>
           </div>
         ) : (
@@ -65,7 +65,10 @@ export default function Knowledge() {
             {groupedNotes.map(([category, catNotes]) => (
               <div key={category}>
                 <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-2">
-                  {CATEGORY_LABELS[category] || category} ({catNotes.length})
+                  {t("knowledge.category_count", {
+                    category: CATEGORY_KEYS[category] ? t(CATEGORY_KEYS[category]) : category,
+                    count: catNotes.length,
+                  })}
                 </p>
                 <div className="border border-border rounded-xl overflow-hidden">
                   {[...catNotes].reverse().map((note) => (
@@ -118,17 +121,16 @@ export default function Knowledge() {
       {/* RIGHT COLUMN — Skills */}
       <div className="overflow-y-auto p-5">
         <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-3">
-          Skills ({skills.length})
+          {t("knowledge.skills", { count: skills.length })}
         </p>
 
         {skills.length === 0 ? (
           <div className="border border-border rounded-xl p-5">
             <p className="font-display text-[14px] font-semibold mb-1.5">
-              No skills yet
+              {t("knowledge.no_skills_title")}
             </p>
             <p className="font-body text-[12px] text-muted-fg leading-relaxed">
-              Agents package reusable tools and techniques as skills. Skills appear
-              here as agents build solutions that can be shared across the team.
+              {t("knowledge.no_skills_hint")}
             </p>
           </div>
         ) : (
@@ -147,7 +149,7 @@ export default function Knowledge() {
                   </p>
                 )}
                 <div className="font-mono text-[10px] text-muted-fg flex gap-3">
-                  <span>By: {skill.creator}</span>
+                  <span>{t("knowledge.by")} {skill.creator}</span>
                   {skill.created && (
                     <span>{String(skill.created).slice(0, 10)}</span>
                   )}
