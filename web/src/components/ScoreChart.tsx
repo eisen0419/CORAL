@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -89,6 +90,7 @@ export default function ScoreChart({
   expanded = false,
   animationDuration,
 }: Props) {
+  const { t } = useTranslation();
   const chartRef = useRef<ChartJS<"line"> | null>(null);
   const [scaleMode, setScaleMode] = useState<ScaleMode>("linear");
   const [viewMode, setViewMode] = useState<ViewMode>("all");
@@ -127,7 +129,7 @@ export default function ScoreChart({
   if (sorted.length === 0) {
     return (
       <div className="flex items-center justify-center h-40 text-muted-fg font-mono text-sm">
-        No scored attempts yet
+        {t("chart.no_scored")}
       </div>
     );
   }
@@ -195,7 +197,7 @@ export default function ScoreChart({
         })
     : [
         {
-          label: "Score",
+          label: t("chart.score_label"),
           data: scores,
           borderColor: "#1a1d1e",
           backgroundColor: "rgba(26, 29, 30, 0.08)",
@@ -217,7 +219,7 @@ export default function ScoreChart({
     datasets: [
       ...agentDatasets,
       {
-        label: "Best",
+        label: t("chart.best_label"),
         data: runningBest,
         borderColor: showPerAgent ? "#a0a3a5" : "#1a1d1e",
         borderWidth: 1,
@@ -354,66 +356,66 @@ export default function ScoreChart({
       <div className={`flex items-center gap-4 ${expanded ? "mb-2" : "mb-4 pr-16"} flex-wrap`}>
         <div className="flex items-center gap-1">
           <span className="font-mono text-[10px] text-muted-fg uppercase tracking-widest mr-2">
-            Scale
+            {t("chart.scale")}
           </span>
           <button
             className={btnClass(scaleMode === "linear")}
             onClick={() => setScaleMode("linear")}
           >
-            Linear
+            {t("chart.linear")}
           </button>
           <button
             className={btnClass(scaleMode === "log")}
             onClick={() => setScaleMode("log")}
-            title={allPositive ? "" : "Log scale requires all positive values"}
+            title={allPositive ? "" : t("chart.log_requires_positive")}
           >
-            Log
+            {t("chart.log")}
           </button>
         </div>
         <div className="flex items-center gap-1">
           <span className="font-mono text-[10px] text-muted-fg uppercase tracking-widest mr-2">
-            X-Axis
+            {t("chart.x_axis")}
           </span>
           <button
             className={btnClass(xAxisMode === "index")}
             onClick={() => setXAxisMode("index")}
           >
-            Index
+            {t("chart.index")}
           </button>
           <button
             className={btnClass(xAxisMode === "time")}
             onClick={() => setXAxisMode("time")}
           >
-            Time
+            {t("chart.time")}
           </button>
         </div>
         <div className="flex items-center gap-1">
           <span className="font-mono text-[10px] text-muted-fg uppercase tracking-widest mr-2">
-            View
+            {t("chart.view")}
           </span>
           <button
             className={btnClass(viewMode === "all")}
             onClick={() => setViewMode("all")}
           >
-            All
+            {t("chart.all")}
           </button>
           <button
             className={btnClass(viewMode === "last50")}
             onClick={() => setViewMode("last50")}
           >
-            Last 50
+            {t("chart.last_50")}
           </button>
           <button
             className={btnClass(viewMode === "last20")}
             onClick={() => setViewMode("last20")}
           >
-            Last 20
+            {t("chart.last_20")}
           </button>
         </div>
         {agents.length > 1 && (
           <div className="flex items-center gap-1 shrink-0">
             <span className="font-mono text-[10px] text-muted-fg uppercase tracking-widest mr-2 shrink-0">
-              Agents
+              {t("chart.agents")}
             </span>
             <button
               className={btnClass(selectedAgents.size === agents.length)}
@@ -425,7 +427,7 @@ export default function ScoreChart({
                 )
               }
             >
-              {selectedAgents.size === agents.length ? "None" : "All"}
+              {selectedAgents.size === agents.length ? t("chart.none") : t("chart.all")}
             </button>
             <div className="flex items-center gap-1 overflow-x-auto">
               {agents.map((id, i) => {
@@ -455,7 +457,7 @@ export default function ScoreChart({
         )}
         <div className="flex items-center gap-1">
           <span className="font-mono text-[10px] text-muted-fg uppercase tracking-widest mr-1">
-            Range
+            {t("chart.range")}
           </span>
           <input
             type="text"
@@ -485,54 +487,54 @@ export default function ScoreChart({
           {/* Filter toggles */}
           <div className="flex items-center gap-1">
             <span className="font-mono text-[10px] text-muted-fg uppercase tracking-widest mr-2">
-              Filter
+              {t("chart.filter")}
             </span>
             <button
               className={btnClass(hideCrashed)}
               onClick={() => setHideCrashed(!hideCrashed)}
             >
-              Hide Crashed
+              {t("chart.hide_crashed")}
             </button>
             <button
               className={btnClass(improvedOnly)}
               onClick={() => setImprovedOnly(!improvedOnly)}
             >
-              Improved Only
+              {t("chart.improved_only")}
             </button>
           </div>
 
           {/* Y-Range with percentile presets */}
           <div className="flex items-center gap-1">
             <span className="font-mono text-[10px] text-muted-fg uppercase tracking-widest mr-1">
-              Y-Range
+              {t("chart.y_range")}
             </span>
             <input
               type="text"
               value={scoreMin}
               onChange={(e) => setScoreMin(e.target.value)}
-              placeholder="min"
+              placeholder={t("chart.min")}
               className={inputClass}
             />
             <input
               type="text"
               value={scoreMax}
               onChange={(e) => setScoreMax(e.target.value)}
-              placeholder="max"
+              placeholder={t("chart.max")}
               className={inputClass}
             />
             <button
               className={`${btnClass(false)} ml-1`}
               onClick={() => { setScoreMin(""); setScoreMax(""); }}
-              title="Clear Y-Range"
+              title={t("chart.clear_y_range")}
             >
-              Clear
+              {t("chart.clear")}
             </button>
           </div>
 
           {/* Percentile presets */}
           <div className="flex items-center gap-1">
             <span className="font-mono text-[10px] text-muted-fg uppercase tracking-widest mr-1">
-              Clip
+              {t("chart.clip")}
             </span>
             <button className={btnClass(false)} onClick={() => setPercentileMax(0.5)}>
               P50
@@ -553,7 +555,7 @@ export default function ScoreChart({
             onClick={resetZoom}
             className={btnClass(false)}
           >
-            Reset Zoom
+            {t("chart.reset_zoom")}
           </button>
         </div>
       )}

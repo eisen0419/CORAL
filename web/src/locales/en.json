@@ -57,14 +57,28 @@
     "linear": "Linear",
     "log": "Log",
     "all": "All",
+    "none": "None",
     "last_50": "Last 50",
     "last_20": "Last 20",
     "scale": "Scale",
     "x_axis": "X-Axis",
     "view": "View",
+    "agents": "Agents",
     "range": "Range",
     "index": "Index",
-    "time": "Time"
+    "time": "Time",
+    "no_scored": "No scored attempts yet",
+    "filter": "Filter",
+    "hide_crashed": "Hide Crashed",
+    "improved_only": "Improved Only",
+    "y_range": "Y-Range",
+    "min": "min",
+    "max": "max",
+    "clear": "Clear",
+    "clear_y_range": "Clear Y-Range",
+    "clip": "Clip",
+    "reset_zoom": "Reset Zoom",
+    "log_requires_positive": "Log scale requires all positive values"
   },
   "replay": {
     "stop": "Stop",
@@ -72,14 +86,14 @@
     "of": "of"
   },
   "status": {
-    "active": "ACTIVE",
-    "idle": "IDLE",
-    "stopped": "STOPPED",
-    "improved": "IMPROVED",
-    "regressed": "REGRESSED",
-    "grader_error": "GRADER ERROR",
-    "tune": "TUNE",
-    "real": "REAL"
+    "active": "Active",
+    "idle": "Idle",
+    "stopped": "Stopped",
+    "improved": "Improved",
+    "baseline": "Baseline",
+    "regressed": "Regressed",
+    "crashed": "Crashed",
+    "timeout": "Timeout"
   },
   "knowledge": {
     "title": "Knowledge",

@@ -57,14 +57,28 @@
     "linear": "线性",
     "log": "对数",
     "all": "全部",
+    "none": "无",
     "last_50": "最近 50",
     "last_20": "最近 20",
     "scale": "刻度",
     "x_axis": "X 轴",
     "view": "视图",
+    "agents": "智能体",
     "range": "范围",
     "index": "索引",
-    "time": "时间"
+    "time": "时间",
+    "no_scored": "暂无评分尝试",
+    "filter": "筛选",
+    "hide_crashed": "隐藏崩溃",
+    "improved_only": "仅显示提升",
+    "y_range": "Y 轴范围",
+    "min": "最小",
+    "max": "最大",
+    "clear": "清除",
+    "clear_y_range": "清除 Y 轴范围",
+    "clip": "截取",
+    "reset_zoom": "重置缩放",
+    "log_requires_positive": "对数刻度要求所有值为正数"
   },
   "replay": {
     "stop": "停止",
@@ -76,10 +90,10 @@
     "idle": "空闲",
     "stopped": "已停止",
     "improved": "提升",
+    "baseline": "基线",
     "regressed": "回退",
-    "grader_error": "评测错误",
-    "tune": "调优",
-    "real": "正式"
+    "crashed": "崩溃",
+    "timeout": "超时"
   },
   "knowledge": {
     "title": "知识库",

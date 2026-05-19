@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 const styles: Record<string, string> = {
   improved:
     "bg-foreground text-background",
@@ -18,12 +20,15 @@ const styles: Record<string, string> = {
 };
 
 export default function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   const cls = styles[status] || styles.baseline;
+  // Translate known statuses; fall back to the raw status string.
+  const label = t(`status.${status}`, { defaultValue: status });
   return (
     <span
       className={`inline-block px-2.5 py-0.5 text-[9px] font-mono font-medium uppercase tracking-widest rounded-full ${cls}`}
     >
-      {status}
+      {label}
     </span>
   );
 }
