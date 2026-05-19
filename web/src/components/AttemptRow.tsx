@@ -63,11 +63,19 @@ export default function AttemptRow({ attempt: a, rank, expanded, onToggle, highl
                   <StatusBadge status={a.status} />
                 </Field>
                 <Field label={t("attempt.title_commit")}>
-                  <span className="font-mono text-[13px]">{a.commit_hash}</span>
+                  <span
+                    className="font-mono text-[13px] cursor-help"
+                    title={a.commit_hash}
+                  >
+                    {a.commit_hash.slice(0, 12)}
+                  </span>
                 </Field>
                 <Field label={t("attempt.title_parent")}>
-                  <span className="font-mono text-[13px] text-muted-fg">
-                    {a.parent_hash ? a.parent_hash.slice(0, 12) + "..." : "---"}
+                  <span
+                    className="font-mono text-[13px] text-muted-fg cursor-help"
+                    title={a.parent_hash || undefined}
+                  >
+                    {a.parent_hash ? a.parent_hash.slice(0, 12) : "---"}
                   </span>
                 </Field>
               </div>
@@ -95,11 +103,11 @@ export default function AttemptRow({ attempt: a, rank, expanded, onToggle, highl
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="font-mono text-[10px] text-muted-fg tracking-widest uppercase mb-0.5">
         {label}
       </p>
-      {children}
+      <div className="truncate">{children}</div>
     </div>
   );
 }
