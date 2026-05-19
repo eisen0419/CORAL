@@ -8,6 +8,8 @@ import ChartModal from "../components/ChartModal";
 import AttemptRow from "../components/AttemptRow";
 import StatusBadge from "../components/StatusBadge";
 import ReplayBar from "../components/ReplayBar";
+import SkillCard from "../components/SkillCard";
+import NoteCard from "../components/NoteCard";
 
 type SortKey = "score" | "agent_id" | "timestamp";
 
@@ -270,40 +272,15 @@ export default function Overview() {
               ) : (
                 <div className="border border-border rounded-xl overflow-hidden">
                   {[...notes].reverse().slice(0, 5).map((note) => (
-                    <div key={note.index} className="border-b border-border last:border-b-0">
-                      <button
-                        onClick={() =>
-                          setExpandedNote(
-                            expandedNote === note.index ? null : note.index
-                          )
-                        }
-                        className="w-full text-left py-2.5 px-3 hover:bg-muted/50 transition-colors duration-100 flex items-start gap-2"
-                      >
-                        <div className="mt-1 shrink-0">
-                          <div className="w-2 h-2 border-2 border-foreground bg-background rounded-full" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-mono text-[10px] text-muted-fg">
-                            {note.date}
-                          </p>
-                          <p className="font-display text-[13px] font-semibold leading-snug truncate">
-                            {note.title}
-                          </p>
-                        </div>
-                        <span className="font-mono text-xs text-muted-fg shrink-0">
-                          {expandedNote === note.index ? "−" : "+"}
-                        </span>
-                      </button>
-                      {expandedNote === note.index && (
-                        <div className="pb-3 pl-7 pr-3">
-                          <div className="border-l-2 border-border pl-3">
-                            <p className="font-body text-[12px] leading-relaxed text-muted-fg whitespace-pre-wrap">
-                              {note.body}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <NoteCard
+                      key={note.index}
+                      note={note}
+                      expanded={expandedNote === note.index}
+                      onToggle={() =>
+                        setExpandedNote(expandedNote === note.index ? null : note.index)
+                      }
+                      variant="compact"
+                    />
                   ))}
                 </div>
               )}
@@ -319,19 +296,7 @@ export default function Overview() {
               ) : (
                 <div className="space-y-2">
                   {skills.map((skill) => (
-                    <div
-                      key={skill.name}
-                      className="p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors duration-100"
-                    >
-                      <p className="font-display text-[13px] font-semibold mb-0.5">
-                        {skill.name}
-                      </p>
-                      {skill.description && (
-                        <p className="font-body text-[12px] text-muted-fg truncate">
-                          {skill.description}
-                        </p>
-                      )}
-                    </div>
+                    <SkillCard key={skill.name} skill={skill} variant="compact" />
                   ))}
                 </div>
               )}

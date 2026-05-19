@@ -1,0 +1,14 @@
+{
+  "deep-research": {
+    "name": "深度研究",
+    "description": "在编码前先研究问题域。用网络搜索找方法、保存原始资料、写综合性研究笔记。"
+  },
+  "organize-files": {
+    "name": "整理文件",
+    "description": "当共享笔记目录变得难以浏览时进行整理。在 research / experiments 等目录内重新组织、提取索引、合并重复。"
+  },
+  "skill-creator": {
+    "name": "技能创建器",
+    "description": "通过识别你工作中反复出现的可复用模式，自主创建、测试和优化技能。把重复子流程沉淀成可复用工具。"
+  }
+}

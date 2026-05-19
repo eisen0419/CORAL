@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { Attempt } from "../lib/api";
 import StatusBadge from "./StatusBadge";
+import { useTranslated } from "../hooks/useTranslated";
 
 interface Props {
   attempt: Attempt;
@@ -12,6 +13,8 @@ interface Props {
 
 export default function AttemptRow({ attempt: a, rank, expanded, onToggle, highlight }: Props) {
   const { t } = useTranslation();
+  const titleTr = useTranslated(a.title, "attempt_title");
+  const feedbackTr = useTranslated(a.feedback, "feedback");
   return (
     <>
       <tr
@@ -39,8 +42,14 @@ export default function AttemptRow({ attempt: a, rank, expanded, onToggle, highl
             <div className="px-6 py-4">
               {/* Title */}
               {a.title && (
-                <p className="font-display text-[14px] font-semibold mb-3">
-                  {a.title}
+                <p
+                  className={`font-display text-[14px] font-semibold mb-3 ${
+                    titleTr.status === "translating" || titleTr.status === "disabled"
+                      ? "text-muted-fg italic"
+                      : ""
+                  }`}
+                >
+                  {titleTr.text}
                 </p>
               )}
 
@@ -87,8 +96,14 @@ export default function AttemptRow({ attempt: a, rank, expanded, onToggle, highl
                     {t("attempt.title_feedback")}
                   </p>
                   <div className="border border-border rounded-lg p-4 bg-background">
-                    <pre className="font-mono text-xs whitespace-pre-wrap leading-relaxed">
-                      {a.feedback}
+                    <pre
+                      className={`font-mono text-xs whitespace-pre-wrap leading-relaxed ${
+                        feedbackTr.status === "translating" || feedbackTr.status === "disabled"
+                          ? "text-muted-fg italic"
+                          : ""
+                      }`}
+                    >
+                      {feedbackTr.text}
                     </pre>
                   </div>
                 </div>
