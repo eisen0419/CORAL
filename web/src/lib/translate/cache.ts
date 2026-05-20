@@ -50,12 +50,43 @@ function persist(): void {
   }
 }
 
+/**
+ * Stable content hash for cache keys.
+ *
+ * Prefers Web Crypto SHA-1 when the page is loaded in a "secure context"
+ * (HTTPS or http://localhost). When the dashboard is reached over a raw
+ * IP (e.g. via Tailscale at http://100.85.x.y:8421), the browser refuses
+ * to expose crypto.subtle and the original implementation throws
+ * "Cannot read properties of undefined (reading 'digest')".
+ *
+ * Fall back to a pure-JS FNV-1a 32-bit hash with a length suffix —
+ * we only need a stable cache key, not collision resistance. For a few
+ * thousand cached strings the collision probability is vanishingly small,
+ * and any collision would cause at worst a cache miss (re-translate),
+ * never a security issue.
+ */
+function fnv1a(text: string): string {
+  let h = 0x811c9dc5 >>> 0;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return "fnv1a" + h.toString(16).padStart(8, "0") + text.length.toString(16);
+}
+
 export async function sha1(text: string): Promise<string> {
-  const buf = new TextEncoder().encode(text);
-  const hash = await crypto.subtle.digest("SHA-1", buf);
-  return [...new Uint8Array(hash)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    try {
+      const buf = new TextEncoder().encode(text);
+      const hash = await crypto.subtle.digest("SHA-1", buf);
+      return [...new Uint8Array(hash)]
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    } catch {
+      // Fall through to the JS fallback if the platform refuses.
+    }
+  }
+  return fnv1a(text);
 }
 
 export async function cacheGet(text: string): Promise<string | null> {
