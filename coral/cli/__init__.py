@@ -61,6 +61,7 @@ _VISIBLE_COMMANDS = [
     "checkout",
     "heartbeat",
     "regression",
+    "archive",
 ]
 
 
@@ -247,6 +248,13 @@ Run 'coral <command> --help' for details on any command."""
     p_log.add_argument("--recent", action="store_true", help="Sort by time instead of score")
     p_log.add_argument("--agent", help="Filter by agent ID")
     p_log.add_argument("--search", help="Full-text search")
+    p_log.add_argument(
+        "--include-archived",
+        action="store_true",
+        default=False,
+        dest="include_archived",
+        help="Include attempts that were hidden via `coral archive`",
+    )
     g_class = p_log.add_mutually_exclusive_group()
     g_class.add_argument(
         "--all",
@@ -561,6 +569,74 @@ Run 'coral <command> --help' for details on any command."""
     _add_run_args(reg_reset)
     reg_reset.add_argument("--workdir", help="Working directory (default: cwd)")
 
+    p_archive = sub.add_parser(
+        "archive",
+        help="Hide low-value attempts from the leaderboard (non-destructive)",
+        description=(
+            "Mark attempts as archived so they're hidden from `coral log`,\n"
+            "`coral notes`, search results, and dashboard listings — without\n"
+            "deleting the underlying JSON. Useful late in a run when the\n"
+            "leaderboard is drowning in low-score / crashed attempts and you\n"
+            "want to focus the team on the surviving signal."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  coral archive list                                            See what's already archived\n"
+            "  coral archive run --score-below 0.3                           Dry-run by score\n"
+            "  coral archive run --score-below 0.3 --apply                   Execute\n"
+            "  coral archive run --status crashed,timeout --apply            Hide all grader errors\n"
+            "  coral archive run --before 7d --status crashed --apply        Old crashes only\n"
+            "  coral archive undo abc123                                     Un-archive one attempt"
+        ),
+        formatter_class=_CommandHelpFormatter,
+    )
+    _add_run_args(p_archive)
+    p_archive.add_argument("--workdir", help="Working directory (default: cwd)")
+    arch_sub = p_archive.add_subparsers(dest="archive_command")
+
+    arch_list = arch_sub.add_parser("list", help="Show every currently-archived attempt")
+    _add_run_args(arch_list)
+    arch_list.add_argument("--workdir", help="Working directory (default: cwd)")
+
+    arch_run = arch_sub.add_parser("run", help="Archive attempts matching criteria")
+    arch_run.add_argument(
+        "--score-below",
+        type=float,
+        default=None,
+        help="Archive attempts whose score is below this value",
+    )
+    arch_run.add_argument(
+        "--before",
+        type=str,
+        default=None,
+        help="Archive attempts older than this (ISO-8601, or relative like '30d')",
+    )
+    arch_run.add_argument(
+        "--status",
+        type=str,
+        default=None,
+        help="Comma-separated status set (e.g. 'crashed,timeout')",
+    )
+    arch_run.add_argument(
+        "--reason",
+        type=str,
+        default=None,
+        help="Free-form reason stamped on archived attempts (default: criteria summary)",
+    )
+    arch_run.add_argument(
+        "--apply",
+        action="store_true",
+        default=False,
+        help="Actually write the archive flag (default: dry-run, only print matches)",
+    )
+    _add_run_args(arch_run)
+    arch_run.add_argument("--workdir", help="Working directory (default: cwd)")
+
+    arch_undo = arch_sub.add_parser("undo", help="Un-archive a single attempt")
+    arch_undo.add_argument("hash", help="Commit hash or prefix")
+    _add_run_args(arch_undo)
+    arch_undo.add_argument("--workdir", help="Working directory (default: cwd)")
+
     # --- Parse and dispatch ---
 
     args = parser.parse_args()
@@ -570,6 +646,7 @@ Run 'coral <command> --help' for details on any command."""
         sys.exit(0)
 
     # Lazy imports for fast startup
+    from coral.cli.archive import cmd_archive
     from coral.cli.author import cmd_init, cmd_validate
     from coral.cli.eval import cmd_checkout, cmd_diff, cmd_eval, cmd_revert, cmd_wait
     from coral.cli.heartbeat import cmd_heartbeat
@@ -590,6 +667,7 @@ Run 'coral <command> --help' for details on any command."""
         "diff": cmd_diff,
         "heartbeat": cmd_heartbeat,
         "regression": cmd_regression,
+        "archive": cmd_archive,
         "log": cmd_log,
         "show": cmd_show,
         "notes": cmd_notes,

@@ -38,6 +38,7 @@ def cmd_log(args: argparse.Namespace) -> None:
     count = getattr(args, "count", None) or 20
     show_all = getattr(args, "all", False)
     only_class = getattr(args, "budget_class", None)
+    include_archived = getattr(args, "include_archived", False)
     # Over-fetch when filtering, so the trimmed result still has up to `count`
     # rows even when many recent / top attempts happen to be tune or error.
     raw_n = count if (show_all or only_class) else max(count * 4, 40)
@@ -50,21 +51,30 @@ def cmd_log(args: argparse.Namespace) -> None:
         return [a for a in attempts if a.budget_class == BUDGET_CLASS_REAL]
 
     if args.search:
-        attempts = filter_attempts(search_attempts(str(coral_dir), args.search))[:count]
+        attempts = filter_attempts(
+            search_attempts(str(coral_dir), args.search, include_archived=include_archived)
+        )[:count]
         if attempts:
             print(f"Search results for '{args.search}':")
             print(format_leaderboard(attempts))
         else:
             print(f"No attempts matching '{args.search}'.")
     elif args.agent:
-        attempts = filter_attempts(get_agent_attempts(str(coral_dir), args.agent))[:count]
+        attempts = filter_attempts(get_agent_attempts(str(coral_dir), args.agent))
+        if not include_archived:
+            from coral.hub.archive import is_archived
+
+            attempts = [a for a in attempts if not is_archived(a)]
+        attempts = attempts[:count]
         if attempts:
             print(f"Attempts by {args.agent}:")
             print(format_leaderboard(attempts))
         else:
             print(f"No attempts by {args.agent}.")
     elif args.recent:
-        attempts = filter_attempts(get_recent(str(coral_dir), n=raw_n))[:count]
+        attempts = filter_attempts(
+            get_recent(str(coral_dir), n=raw_n, include_archived=include_archived)
+        )[:count]
         if attempts:
             print(f"Recent {len(attempts)} attempt(s):")
             print(format_leaderboard(attempts))
@@ -72,7 +82,12 @@ def cmd_log(args: argparse.Namespace) -> None:
             print("No attempts yet.")
     else:
         attempts = filter_attempts(
-            get_leaderboard(str(coral_dir), top_n=raw_n, direction=direction)
+            get_leaderboard(
+                str(coral_dir),
+                top_n=raw_n,
+                direction=direction,
+                include_archived=include_archived,
+            )
         )[:count]
         if attempts:
             print(f"Leaderboard (top {len(attempts)}):")
