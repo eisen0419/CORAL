@@ -47,11 +47,8 @@ from coral.hub.failures import (
     write_failure_bundle,
 )
 from coral.hub.regressions import (
-    REGRESSION_CHECK_PASS,
     REGRESSION_STATUS,
-    check_against_baseline,
-    maybe_seed_baseline,
-    promote,
+    check_and_maybe_promote,
 )
 from coral.types import (
     BUDGET_CLASS_GRADER_ERROR,
@@ -370,11 +367,20 @@ def _grade_one(
                 minimize,
             )
             # --- Regression memory --------------------------------------- #
-            # Compare per-fixture scores against the team baseline.
-            # Tune-mode and grader-error attempts skip the check (tune runs a
-            # different workload, so its scores are not on the same scale).
+            # Compare per-fixture scores against the team baseline and,
+            # atomically inside the same lock, seed or promote the
+            # baseline if applicable. Tune-mode and grader-error attempts
+            # skip the check (tune runs a different workload; its scores
+            # are not on the same scale as real-mode baselines).
             if budget_class == BUDGET_CLASS_REAL:
-                check = check_against_baseline(coral_dir, bundle)
+                check = check_and_maybe_promote(
+                    coral_dir,
+                    bundle,
+                    attempt.commit_hash,
+                    by=attempt.agent_id,
+                    aggregate_improved=(status == "improved"),
+                    minimize=minimize,
+                )
                 metadata["regression_check"] = check.status
                 if check.failed:
                     metadata["regressed_fixtures"] = check.regressed_fixtures
@@ -403,26 +409,6 @@ def _grade_one(
                             "Failed to write regression failure bundle for %s",
                             attempt.commit_hash[:12],
                         )
-                elif check.status == REGRESSION_CHECK_PASS and status == "improved":
-                    # All fixtures held or improved AND aggregate improved →
-                    # promote this attempt as the new baseline.
-                    promote(
-                        coral_dir,
-                        bundle,
-                        attempt.commit_hash,
-                        by=attempt.agent_id,
-                        event="promote",
-                        minimize=minimize,
-                    )
-                elif check.status == "none" and status == "improved":
-                    # No baseline yet — seed it from this attempt's bundle.
-                    maybe_seed_baseline(
-                        coral_dir,
-                        bundle,
-                        attempt.commit_hash,
-                        by=attempt.agent_id,
-                        minimize=minimize,
-                    )
                 if check.missing_fixtures:
                     metadata["baseline_missing_fixtures"] = check.missing_fixtures
         finally:

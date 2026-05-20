@@ -52,15 +52,53 @@ DEFAULT_SECRET_PATTERNS: list[SecretPattern] = [
         "private_key_pem",
         re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY( BLOCK)?-----", re.IGNORECASE),
     ),
-    # Long hex (40+ chars) — catches SHA1/SHA256-like secrets
-    SecretPattern("long_hex_secret", re.compile(r"\b[a-f0-9]{40,}\b", re.IGNORECASE)),
+    # Long hex (40+ chars) — only when adjacent to a credential keyword.
+    # A bare 40-hex string is far more likely to be a git SHA, content
+    # hash, checksum, or test vector than a secret; without the keyword
+    # gate this pattern produced floods of false positives on real diffs
+    # (any pre-commit run that included a commit reference would block).
+    #
+    # Constraints (codex review r2):
+    #   - leading `\b` so the keyword is its own word (not embedded in a
+    #     larger identifier like `presentcrosswordtoken`)
+    #   - keyword may carry a trailing `_word` suffix
+    #     (covers `secret_key`, `client_secret`, `api_key_id`, ...)
+    #   - separator class explicitly excludes `\n` / `\r` so the match
+    #     stays on the same line; a hex string two lines later is not
+    #     the credential value of this keyword
+    SecretPattern(
+        "long_hex_secret",
+        re.compile(
+            r"\b"
+            r"(?:secret|password|passwd|pwd|token|api[_-]?key|access[_-]?key"
+            r"|bearer|authorization|auth[_-]?token|client[_-]?secret"
+            r"|private[_-]?key|session[_-]?id|csrf[_-]?token)"
+            r"(?:_[a-z]+)?"
+            r"[ \t'\":=,]+"
+            r"\b[a-f0-9]{40,}\b",
+            re.IGNORECASE,
+        ),
+    ),
     # Credential assignment lines:  password = 'xxxxxxxx' / token: "yyyyyyyy" / api_key=zzzzzzzz
     # Quoted: >=6 inside quotes;  unquoted: >=6 non-whitespace, non-quote chars.
+    # Negative lookahead excludes documented remediation placeholders
+    # (`<REDACTED>`, `<...>`, `***`, `xxx...`, `placeholder`) so the hook
+    # doesn't reject the very pattern the operator-side docs tell agents
+    # to use when they need a value-shaped sigil.
     SecretPattern(
         "credential_assignment",
         re.compile(
             r"\b(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key)"
             r"\s*[:=]\s*"
+            r"(?!"
+            r"(?:'<[^']*>'|\"<[^\"]*>\"|<[^>\s]+>|"
+            r"'\*+'|\"\*+\"|\*{3,}|"
+            r"'x{3,}'|\"x{3,}\"|x{3,}|"
+            r"'placeholder'|\"placeholder\"|placeholder|"
+            r"'changeme'|\"changeme\"|changeme|"
+            r"'todo'|\"todo\"|todo|"
+            r"'example'|\"example\"|example)"
+            r"(?:\s|$))"
             r"(?:'[^']{6,}'|\"[^\"]{6,}\"|[^\s'\"]{6,})",
             re.IGNORECASE,
         ),

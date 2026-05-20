@@ -31,9 +31,12 @@ Status semantics:
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import os
 import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -142,8 +145,44 @@ def _baseline_path(coral_dir: str | Path) -> Path:
     return _regressions_dir(coral_dir) / "baseline.json"
 
 
+def _baseline_lock_path(coral_dir: str | Path) -> Path:
+    return _regressions_dir(coral_dir) / "baseline.json.lock"
+
+
 def _history_path(coral_dir: str | Path) -> Path:
     return _regressions_dir(coral_dir) / "history.jsonl"
+
+
+@contextlib.contextmanager
+def _baseline_lock(coral_dir: str | Path) -> Iterator[None]:
+    """Cross-process exclusive lock around baseline read-modify-write.
+
+    The grader daemon runs N workers in a thread pool (and the operator
+    may also run `coral regression promote` concurrently). Without a
+    lock, two workers can both:
+      1. read the same stale baseline,
+      2. compute a "pass" verdict against it,
+      3. write divergent new baselines — last-writer-wins drops the
+         other's improvement and can erase fixtures.
+
+    The lock file is a sibling (`baseline.json.lock`) so the actual
+    baseline file is never opened in a mode that conflicts with the
+    atomic tmp+rename used by `write_baseline`.
+
+    POSIX `fcntl.flock`. CORAL targets macOS / Linux; Windows isn't
+    supported as a runtime anyway.
+    """
+    lock_path = _baseline_lock_path(coral_dir)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_WRONLY, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 # --------------------------------------------------------------------------- #
@@ -232,6 +271,33 @@ def _bundle_scores(bundle: Any) -> dict[str, float]:
     return out
 
 
+def _bundle_fixtures(bundle: Any, default_minimize: bool) -> dict[str, tuple[float, bool]]:
+    """Extract `{name: (value, minimize)}` from a ScoreBundle.
+
+    Per-fixture direction is read from each `Score.metadata["minimize"]`
+    when present (lets a grader say "this fixture is lower-better, that
+    one is higher-better"); otherwise the caller's `default_minimize`
+    applies (task-level direction from `grader.direction`).
+    """
+    scores = getattr(bundle, "scores", None) or {}
+    out: dict[str, tuple[float, bool]] = {}
+    for name, score in scores.items():
+        v = getattr(score, "value", None)
+        if v is None:
+            continue
+        try:
+            value = float(v)
+        except (TypeError, ValueError):
+            continue
+        meta = getattr(score, "metadata", None) or {}
+        if "minimize" in meta:
+            minimize = bool(meta["minimize"])
+        else:
+            minimize = default_minimize
+        out[name] = (value, minimize)
+    return out
+
+
 def check_against_baseline(
     coral_dir: str | Path,
     bundle: Any,
@@ -269,6 +335,68 @@ def check_against_baseline(
     )
 
 
+def _promote_inside_lock(
+    coral_dir: str | Path,
+    bundle: Any,
+    commit_hash: str,
+    by: str,
+    *,
+    event: str,
+    tolerance: float,
+    minimize: bool,
+    retire_missing: bool,
+    existing: Baseline | None,
+) -> Baseline:
+    """Caller must hold `_baseline_lock`. Performs the merge + write.
+
+    Split from the public `promote` so the daemon's check-and-promote
+    path can re-read the baseline inside the same critical section
+    (without acquiring the lock twice).
+    """
+    fixture_data = _bundle_fixtures(bundle, default_minimize=minimize)
+
+    fixtures: dict[str, FixtureBaseline] = {}
+    retired: list[str] = []
+    preserved: list[str] = []
+
+    if existing is not None:
+        for name, fb in existing.fixtures.items():
+            if name in fixture_data:
+                continue  # will be overwritten below
+            if retire_missing:
+                retired.append(name)
+            else:
+                fixtures[name] = fb
+                preserved.append(name)
+
+    for name, (value, per_fix_minimize) in fixture_data.items():
+        fixtures[name] = FixtureBaseline(
+            score=value, tolerance=tolerance, minimize=per_fix_minimize
+        )
+
+    baseline = Baseline(
+        baseline_commit=commit_hash,
+        set_at=datetime.now(UTC).isoformat(),
+        set_by=by,
+        fixtures=fixtures,
+    )
+    write_baseline(coral_dir, baseline)
+
+    history: dict[str, Any] = {
+        "at": baseline.set_at,
+        "event": event,
+        "commit": commit_hash,
+        "by": by,
+        "fixtures": {name: fb.to_dict() for name, fb in fixtures.items()},
+    }
+    if preserved:
+        history["preserved_fixtures"] = sorted(preserved)
+    if retired:
+        history["retired_fixtures"] = sorted(retired)
+    _append_history(coral_dir, history)
+    return baseline
+
+
 def promote(
     coral_dir: str | Path,
     bundle: Any,
@@ -277,36 +405,128 @@ def promote(
     event: str = "promote",
     tolerance: float = 0.0,
     minimize: bool = False,
+    retire_missing: bool = False,
 ) -> Baseline:
-    """Write `bundle.scores` as the new baseline. Returns the written Baseline.
+    """Merge `bundle.scores` into the baseline. Returns the written Baseline.
 
-    `event` is "set" (first time), "promote" (auto on improved attempt),
-    or "manual" (CLI `coral regression promote`). Carried into history.jsonl
-    for audit.
+    **Merge semantics, not overwrite** — previously-tracked fixtures that
+    are missing from this bundle are preserved by default. This prevents
+    a grader that pruned (or simply forgot) fixture `b` from permanently
+    erasing `b`'s regression protection. Pass `retire_missing=True` only
+    when the grader has intentionally stopped emitting a fixture.
+
+    Per-fixture direction (lower-better vs higher-better) is read from
+    each `Score.metadata["minimize"]` when present; otherwise the
+    `minimize` argument applies as the task-level default.
+
+    `event` is "set" (first time seed), "promote" (auto on improved
+    attempt), or "manual" (CLI `coral regression promote`). Carried
+    into history.jsonl for audit; `preserved_fixtures` / `retired_fixtures`
+    appear on the history entry when applicable.
+
+    Acquires `_baseline_lock` and re-reads the baseline so concurrent
+    callers can't last-writer-wins each other.
     """
-    observed = _bundle_scores(bundle)
-    fixtures = {
-        name: FixtureBaseline(score=value, tolerance=tolerance, minimize=minimize)
-        for name, value in observed.items()
-    }
-    baseline = Baseline(
-        baseline_commit=commit_hash,
-        set_at=datetime.now(UTC).isoformat(),
-        set_by=by,
-        fixtures=fixtures,
-    )
-    write_baseline(coral_dir, baseline)
-    _append_history(
-        coral_dir,
-        {
-            "at": baseline.set_at,
-            "event": event,
-            "commit": commit_hash,
-            "by": by,
-            "fixtures": {name: fb.to_dict() for name, fb in fixtures.items()},
-        },
-    )
-    return baseline
+    with _baseline_lock(coral_dir):
+        existing = read_baseline(coral_dir)
+        return _promote_inside_lock(
+            coral_dir,
+            bundle,
+            commit_hash,
+            by,
+            event=event,
+            tolerance=tolerance,
+            minimize=minimize,
+            retire_missing=retire_missing,
+            existing=existing,
+        )
+
+
+def check_and_maybe_promote(
+    coral_dir: str | Path,
+    bundle: Any,
+    commit_hash: str,
+    by: str,
+    *,
+    aggregate_improved: bool,
+    tolerance: float = 0.0,
+    minimize: bool = False,
+) -> RegressionCheck:
+    """Atomic check + (optional) seed/promote inside `_baseline_lock`.
+
+    The daemon's `_grade_one` must call this instead of calling
+    `check_against_baseline` and `promote` separately — otherwise two
+    workers can both pass against the same stale baseline, race on
+    `write_baseline`, and the loser's improvements are silently
+    dropped.
+
+    Side effects (inside the lock):
+      - If no baseline exists AND `aggregate_improved` is True AND
+        the bundle has named scores: seed a new baseline (event="set").
+      - If a baseline exists, all fixtures hold, AND `aggregate_improved`
+        is True: merge the observed scores in as the new baseline
+        (event="promote").
+      - Otherwise: no write.
+
+    Returns the `RegressionCheck` reflecting the on-disk baseline at
+    the moment of decision (which, because of the lock, is the same
+    one the promote decision was made against).
+    """
+    with _baseline_lock(coral_dir):
+        baseline = read_baseline(coral_dir)
+        observed = _bundle_scores(bundle)
+
+        if baseline is None:
+            if observed and aggregate_improved:
+                _promote_inside_lock(
+                    coral_dir,
+                    bundle,
+                    commit_hash,
+                    by,
+                    event="set",
+                    tolerance=tolerance,
+                    minimize=minimize,
+                    retire_missing=False,
+                    existing=None,
+                )
+            return RegressionCheck(status=REGRESSION_CHECK_NONE)
+
+        if not observed:
+            return RegressionCheck(status=REGRESSION_CHECK_SKIPPED)
+
+        regressed: list[str] = []
+        missing: list[str] = []
+        for name, fb in baseline.fixtures.items():
+            if name not in observed:
+                missing.append(name)
+                continue
+            if fb.regressed(observed[name]):
+                regressed.append(name)
+
+        if regressed:
+            return RegressionCheck(
+                status=REGRESSION_CHECK_FAIL,
+                regressed_fixtures=sorted(regressed),
+                missing_fixtures=sorted(missing),
+            )
+
+        if aggregate_improved:
+            _promote_inside_lock(
+                coral_dir,
+                bundle,
+                commit_hash,
+                by,
+                event="promote",
+                tolerance=tolerance,
+                minimize=minimize,
+                retire_missing=False,
+                existing=baseline,
+            )
+
+        return RegressionCheck(
+            status=REGRESSION_CHECK_PASS,
+            missing_fixtures=sorted(missing),
+        )
 
 
 def maybe_seed_baseline(
@@ -320,9 +540,24 @@ def maybe_seed_baseline(
 
     Returns the seeded baseline or None if nothing was written (baseline
     already exists, or the bundle had no usable named scores).
+
+    Atomic via `_baseline_lock` — safe to call concurrently with promote
+    or check_and_maybe_promote (only the first caller seeds; subsequent
+    callers see the existing baseline and return None).
     """
-    if read_baseline(coral_dir) is not None:
-        return None
     if not _bundle_scores(bundle):
         return None
-    return promote(coral_dir, bundle, commit_hash, by, event="set", minimize=minimize)
+    with _baseline_lock(coral_dir):
+        if read_baseline(coral_dir) is not None:
+            return None
+        return _promote_inside_lock(
+            coral_dir,
+            bundle,
+            commit_hash,
+            by,
+            event="set",
+            tolerance=0.0,
+            minimize=minimize,
+            retire_missing=False,
+            existing=None,
+        )

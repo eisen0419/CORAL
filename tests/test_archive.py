@@ -204,3 +204,75 @@ def test_is_archived_true_after_archive(tmp_path: Path) -> None:
 def test_is_archived_false_otherwise() -> None:
     a = _make_attempt("a" * 40)
     assert is_archived(a) is False
+
+
+# --- Codex review r1 fixes: P1#3 + P2 (date parsing, pending guard) ----------
+
+
+def test_archive_refuses_pending_attempt(tmp_path: Path) -> None:
+    """P1#3 + safety: pending attempts must NOT be archivable.
+
+    The daemon hasn't finalized them; archive_attempt's write would
+    clobber the eventual finalize.
+    """
+    coral = _setup_attempts_dir(tmp_path)
+    pending = _make_attempt("a" * 40, score=None, status="pending")
+    write_attempt(str(coral), pending)
+    assert archive_attempt(coral, "a" * 40) is False
+    # And select_for_archive must skip it too even on broad criteria.
+    matched = select_for_archive(coral, ArchiveCriteria(status_in=("pending", "crashed")))
+    assert matched == []
+
+
+def test_criteria_before_date_handles_tz_correctly(tmp_path: Path) -> None:
+    """P2: before_date must compare actual moments, not lex strings.
+
+    `2026-05-19T23:00:00-08:00` is later (in wall time) than
+    `2026-05-20T00:00:00+00:00`, but lex compare would say earlier.
+    Test the actual case where naive lex compare gets it wrong.
+    """
+    coral = _setup_attempts_dir(tmp_path)
+    # Wall-clock-later attempt with a negative offset (looks lex-earlier).
+    later_lex = _make_attempt(
+        "a" * 40, timestamp="2026-05-19T23:00:00-08:00"
+    )  # = 2026-05-20T07:00 UTC
+    earlier_real = _make_attempt(
+        "b" * 40, timestamp="2026-05-20T00:00:00+00:00"
+    )  # = 2026-05-20T00:00 UTC
+    write_attempt(str(coral), later_lex)
+    write_attempt(str(coral), earlier_real)
+    # Cutoff at 2026-05-20T03:00 UTC — `earlier_real` should match, `later_lex` shouldn't.
+    matched = select_for_archive(
+        coral, ArchiveCriteria(before_date="2026-05-20T03:00:00+00:00")
+    )
+    assert {a.commit_hash for a in matched} == {"b" * 40}
+
+
+def test_criteria_before_date_naive_timestamps_treated_as_utc(tmp_path: Path) -> None:
+    """Naive timestamps from older daemons must round-trip via UTC."""
+    coral = _setup_attempts_dir(tmp_path)
+    write_attempt(str(coral), _make_attempt("a" * 40, timestamp="2026-05-01T00:00:00"))
+    matched = select_for_archive(coral, ArchiveCriteria(before_date="2026-05-10T00:00:00+00:00"))
+    assert {a.commit_hash for a in matched} == {"a" * 40}
+
+
+def test_criteria_unparseable_timestamp_skipped(tmp_path: Path) -> None:
+    """Garbage timestamps don't make us archive blindly."""
+    coral = _setup_attempts_dir(tmp_path)
+    write_attempt(str(coral), _make_attempt("a" * 40, timestamp="not-a-real-timestamp"))
+    matched = select_for_archive(coral, ArchiveCriteria(before_date="2026-05-10T00:00:00+00:00"))
+    assert matched == []  # safer to skip than to misclassify
+
+
+def test_unarchive_refuses_pending_attempt(tmp_path: Path) -> None:
+    """Codex r2 P2: unarchive must also refuse pending attempts.
+
+    Mirrors archive_attempt's pending guard — daemon may finalize after
+    we read the snapshot, and unarchive's write would clobber that.
+    """
+    coral = _setup_attempts_dir(tmp_path)
+    # Construct an archived-while-pending record manually (legacy / edited).
+    pending_archived = _make_attempt("a" * 40, score=None, status="pending")
+    pending_archived.metadata = {"archived": {"reason": "legacy", "at": "2026-01-01T00:00:00+00:00"}}
+    write_attempt(str(coral), pending_archived)
+    assert unarchive_attempt(coral, "a" * 40) is False
