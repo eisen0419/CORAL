@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import tempfile
@@ -15,6 +16,120 @@ def _attempts_dir(coral_dir: str | Path) -> Path:
     d = Path(coral_dir) / "public" / "attempts"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+# Process-local stat-signature cache: {absolute_path: (sig, parsed_Attempt)}.
+#
+# Motivation: `read_attempts` is called on every grader poll tick (~2 Hz),
+# every `coral log` / `coral status`, every `submit_eval`'s pending check,
+# and every monitor-loop stall-watchdog probe. Each call re-globs +
+# re-`read_text` + re-`json.loads` every attempt file. With 2000 attempts
+# the daemon spins ~8% CPU just on this (measured locally) — and the cost
+# is linear in N for a workload that's mostly cold (only the latest 1-2
+# attempts changed since the prior scan).
+#
+# A stat check is microseconds vs a full JSON parse at ~20 us per file.
+# Caching parsed Attempts keyed by a multi-field stat signature collapses
+# the steady-state cost to stat-only for cold files.
+#
+# Why a *multi-field* signature, not just mtime_ns:
+#
+#   - Atomic write uses `os.replace(tmp_path, path)` (see write_attempt).
+#     This swaps in the temp file's INODE — the old inode is unlinked. An
+#     inode-aware signature catches this even if mtime didn't change.
+#   - HFS+ has 1-second mtime granularity (Apple legacy filesystem).
+#     A pending-then-finalized write inside the same second can present
+#     the same mtime to a stat() observer. Inode + size still differ.
+#   - NFS may cache stat attributes; ctime tracks server-side metadata
+#     updates that mtime can lag on.
+#   - Overlay filesystems (Docker, containerd) sometimes lose mtime
+#     precision when promoting files across layers.
+#
+# Signature: (st_dev, st_ino, st_size, st_mtime_ns, st_ctime_ns). Any one
+# of these changing is sufficient to invalidate the cached entry.
+#
+# The cache is process-local. Each of {daemon, CLI, web dashboard} has
+# its own; they don't share parsed entries.
+_StatSig = tuple[int, int, int, int, int]
+_ATTEMPT_CACHE: dict[str, tuple[_StatSig, Attempt]] = {}
+_ATTEMPT_CACHE_MAX_ENTRIES = 50_000
+"""Soft cap on cache size to bound memory in pathological long-runs.
+50k attempts × ~2 KB parsed = ~100 MB worst case. Past the cap the
+oldest cache entry is dropped on insert (FIFO; we rely on the dict
+preserving insertion order)."""
+
+
+def _stat_signature(path: Path) -> _StatSig | None:
+    """Return the multi-field signature for `path`, or None on stat failure."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
+
+def _clone_attempt(attempt: Attempt) -> Attempt:
+    """Deep-copy an Attempt. Callers must never get the cached instance —
+    Attempt is a dataclass with a mutable `metadata` dict; mutation by a
+    caller would corrupt the cache silently.
+
+    A previous version used `Attempt.from_dict(attempt.to_dict())` thinking
+    that would suffice, but `to_dict()` returns the live `metadata`
+    reference (not a copy), so `from_dict` recovered a shared inner dict.
+    `copy.deepcopy` is the only correct call here — it recurses into
+    nested dicts/lists, which `metadata` may contain (e.g. the regression
+    machinery stores `score_breakdown: dict[str, float]` and
+    `regressed_fixtures: list[str]` under metadata).
+    """
+    return copy.deepcopy(attempt)
+
+
+def _cached_read(path: Path) -> Attempt | None:
+    """Return a parsed Attempt, using the stat-signature cache when possible.
+
+    Returns None if the file is missing or malformed; in either case the
+    cache entry (if any) is dropped so a later write can repopulate. The
+    returned Attempt is always a fresh clone — callers may safely mutate
+    its `metadata` or other fields without affecting subsequent reads.
+    """
+    sig = _stat_signature(path)
+    if sig is None:
+        _ATTEMPT_CACHE.pop(str(path), None)
+        return None
+    key = str(path)
+    cached = _ATTEMPT_CACHE.get(key)
+    if cached is not None and cached[0] == sig:
+        return _clone_attempt(cached[1])
+    try:
+        attempt = Attempt.from_dict(json.loads(path.read_text()))
+    except (json.JSONDecodeError, KeyError, OSError):
+        _ATTEMPT_CACHE.pop(key, None)
+        return None
+    # FIFO eviction once the cap is hit. Insertion order is preserved by
+    # dict since CPython 3.7; assigning to an existing key does NOT move
+    # it, so we drop the oldest by popping the first key only when we're
+    # about to add a *new* key.
+    if key not in _ATTEMPT_CACHE and len(_ATTEMPT_CACHE) >= _ATTEMPT_CACHE_MAX_ENTRIES:
+        oldest = next(iter(_ATTEMPT_CACHE))
+        _ATTEMPT_CACHE.pop(oldest, None)
+    _ATTEMPT_CACHE[key] = (sig, attempt)
+    # Return a clone — see _clone_attempt docstring.
+    return _clone_attempt(attempt)
+
+
+def _invalidate_cache_entry(path: Path) -> None:
+    """Drop a single cache entry. Called from write_attempt on the
+    successful-write path so that even before the next stat()/read,
+    we won't return a stale parsed value if for some reason mtime
+    happens to repeat (extremely unlikely on real filesystems but
+    cheap to defend against)."""
+    _ATTEMPT_CACHE.pop(str(path), None)
+
+
+def clear_attempt_cache() -> None:
+    """Test helper: drop the entire cache. Production code shouldn't need
+    this — atomic-write mtime bumps + path-keyed entries are sufficient."""
+    _ATTEMPT_CACHE.clear()
 
 
 def write_attempt(coral_dir: str | Path, attempt: Attempt) -> Path:
@@ -45,18 +160,26 @@ def write_attempt(coral_dir: str | Path, attempt: Attempt) -> Path:
         except OSError:
             pass
         raise
+    # Defensive: drop our own cache entry. The mtime check would catch
+    # the change on next read anyway, but clearing here means a same-
+    # process read after write won't take the stat hit.
+    _invalidate_cache_entry(path)
     return path
 
 
 def read_attempt(coral_dir: str | Path, commit_hash: str) -> Attempt | None:
-    """Read a single attempt by commit hash. Returns None if missing or malformed."""
+    """Read a single attempt by commit hash. Returns None if missing or malformed.
+
+    Cache-backed via `_cached_read` — repeated reads of unchanged files
+    skip the JSON parse. If the file went missing since the last cached
+    read, the cache entry is dropped (otherwise a deleted attempt could
+    masquerade as still-present in process-local memory).
+    """
     path = _attempts_dir(coral_dir) / f"{commit_hash}.json"
     if not path.exists():
+        _invalidate_cache_entry(path)
         return None
-    try:
-        return Attempt.from_dict(json.loads(path.read_text()))
-    except (json.JSONDecodeError, KeyError, OSError):
-        return None
+    return _cached_read(path)
 
 
 def increment_eval_count(coral_dir: str | Path) -> int:
@@ -85,15 +208,18 @@ def read_eval_count(coral_dir: str | Path) -> int:
 
 
 def read_attempts(coral_dir: str | Path) -> list[Attempt]:
-    """Read all attempt records."""
+    """Read all attempt records.
+
+    mtime-cached: files unchanged since the last call skip the JSON parse.
+    The dominant cost is now `os.stat` per file (microseconds), which
+    cuts daemon-poll-loop CPU dramatically on long runs.
+    """
     d = _attempts_dir(coral_dir)
-    attempts = []
+    attempts: list[Attempt] = []
     for f in sorted(d.glob("*.json")):
-        try:
-            data = json.loads(f.read_text())
-            attempts.append(Attempt.from_dict(data))
-        except (json.JSONDecodeError, KeyError):
-            continue
+        a = _cached_read(f)
+        if a is not None:
+            attempts.append(a)
     return attempts
 
 

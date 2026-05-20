@@ -210,3 +210,273 @@ def test_skills():
 
         tree = get_skill_tree(str(skill_dir))
         assert "SKILL.md" in tree
+
+
+# --- mtime cache for read_attempts / read_attempt ----------------------------
+
+
+def test_mtime_cache_returns_equal_when_file_unchanged(tmp_path: Path) -> None:
+    """Repeated reads of an unchanged file return equal (not identical) Attempts.
+
+    Codex r1 P2 fix: the cache returns a defensive clone, not the stored
+    instance. Callers may mutate the result without poisoning the cache.
+    """
+    from coral.hub.attempts import (
+        clear_attempt_cache,
+        read_attempt,
+        write_attempt,
+    )
+    from coral.types import Attempt
+
+    clear_attempt_cache()
+    coral = tmp_path / ".coral"
+    (coral / "public" / "attempts").mkdir(parents=True)
+    attempt = Attempt(
+        commit_hash="a" * 40,
+        agent_id="agent-1",
+        title="test",
+        score=0.7,
+        status="improved",
+        parent_hash=None,
+        timestamp="2026-05-20T00:00:00+00:00",
+        metadata={"k": "v"},
+    )
+    write_attempt(str(coral), attempt)
+
+    first = read_attempt(coral, "a" * 40)
+    second = read_attempt(coral, "a" * 40)
+    assert first is not None and second is not None
+    # Different instances (clone), but equal values.
+    assert first is not second
+    assert first.to_dict() == second.to_dict()
+
+
+def test_mtime_cache_mutation_does_not_poison_cache(tmp_path: Path) -> None:
+    """Codex r1 P2: mutating a returned Attempt must not affect future reads."""
+    from coral.hub.attempts import clear_attempt_cache, read_attempt, write_attempt
+    from coral.types import Attempt
+
+    clear_attempt_cache()
+    coral = tmp_path / ".coral"
+    (coral / "public" / "attempts").mkdir(parents=True)
+    write_attempt(
+        str(coral),
+        Attempt(
+            commit_hash="e" * 40,
+            agent_id="agent-1",
+            title="orig",
+            score=0.5,
+            status="improved",
+            parent_hash=None,
+            timestamp="2026-05-20T00:00:00+00:00",
+            metadata={"untouched": True},
+        ),
+    )
+    first = read_attempt(coral, "e" * 40)
+    assert first is not None
+    # Mutate the returned object.
+    first.metadata["polluted"] = "yes"
+    first.title = "MUTATED"
+    # Subsequent read must NOT see the mutation.
+    second = read_attempt(coral, "e" * 40)
+    assert second is not None
+    assert "polluted" not in second.metadata
+    assert second.title == "orig"
+
+
+def test_mtime_cache_invalidates_on_write(tmp_path: Path) -> None:
+    """After write_attempt, a subsequent read sees the new content."""
+    import time
+
+    from coral.hub.attempts import clear_attempt_cache, read_attempt, write_attempt
+    from coral.types import Attempt
+
+    clear_attempt_cache()
+    coral = tmp_path / ".coral"
+    (coral / "public" / "attempts").mkdir(parents=True)
+    a1 = Attempt(
+        commit_hash="b" * 40,
+        agent_id="agent-1",
+        title="v1",
+        score=0.5,
+        status="improved",
+        parent_hash=None,
+        timestamp="2026-05-20T00:00:00+00:00",
+    )
+    write_attempt(str(coral), a1)
+    first = read_attempt(coral, "b" * 40)
+    assert first is not None
+    assert first.title == "v1"
+
+    # Sleep just long enough to guarantee a different mtime even on
+    # filesystems with coarse mtime granularity. macOS HFS+ has ~1s
+    # granularity; APFS / Linux ext4 are ns.
+    time.sleep(0.01)
+
+    a2 = Attempt(
+        commit_hash="b" * 40,
+        agent_id="agent-1",
+        title="v2",  # changed
+        score=0.9,  # changed
+        status="improved",
+        parent_hash=None,
+        timestamp="2026-05-20T00:00:00+00:00",
+    )
+    write_attempt(str(coral), a2)
+    second = read_attempt(coral, "b" * 40)
+    assert second is not None
+    assert second.title == "v2"
+    assert second.score == 0.9
+
+
+def test_mtime_cache_handles_deleted_file(tmp_path: Path) -> None:
+    """Deleting the file after a cached read returns None on next read."""
+    import os
+
+    from coral.hub.attempts import _ATTEMPT_CACHE, clear_attempt_cache, read_attempt, write_attempt
+    from coral.types import Attempt
+
+    clear_attempt_cache()
+    coral = tmp_path / ".coral"
+    (coral / "public" / "attempts").mkdir(parents=True)
+    attempt = Attempt(
+        commit_hash="c" * 40,
+        agent_id="agent-1",
+        title="test",
+        score=0.7,
+        status="improved",
+        parent_hash=None,
+        timestamp="2026-05-20T00:00:00+00:00",
+    )
+    write_attempt(str(coral), attempt)
+    read_attempt(coral, "c" * 40)
+    # Cache populated.
+    path = coral / "public" / "attempts" / ("c" * 40 + ".json")
+    assert str(path) in _ATTEMPT_CACHE
+
+    os.remove(path)
+    result = read_attempt(coral, "c" * 40)
+    assert result is None
+    # Cache entry was dropped on the failed stat.
+    assert str(path) not in _ATTEMPT_CACHE
+
+
+def test_mtime_cache_handles_malformed_json(tmp_path: Path) -> None:
+    """A file that becomes invalid JSON returns None and drops the cache entry."""
+    from coral.hub.attempts import _ATTEMPT_CACHE, clear_attempt_cache, read_attempt, write_attempt
+    from coral.types import Attempt
+
+    clear_attempt_cache()
+    coral = tmp_path / ".coral"
+    (coral / "public" / "attempts").mkdir(parents=True)
+    write_attempt(
+        str(coral),
+        Attempt(
+            commit_hash="d" * 40,
+            agent_id="agent-1",
+            title="ok",
+            score=0.5,
+            status="improved",
+            parent_hash=None,
+            timestamp="2026-05-20T00:00:00+00:00",
+        ),
+    )
+    read_attempt(coral, "d" * 40)
+    path = coral / "public" / "attempts" / ("d" * 40 + ".json")
+    assert str(path) in _ATTEMPT_CACHE
+
+    # Corrupt the file (this rewrite changes mtime; cache should miss + re-parse fail).
+    import time
+
+    time.sleep(0.01)
+    path.write_text("not valid json {{{")
+    result = read_attempt(coral, "d" * 40)
+    assert result is None
+    # Cache entry was cleared by the failed parse.
+    assert str(path) not in _ATTEMPT_CACHE
+
+
+def test_read_attempts_cached_path_returns_equal_results(tmp_path: Path) -> None:
+    """Multiple read_attempts() calls on an unchanged dir return equal lists.
+
+    Returns defensive clones (Codex r1 P2 fix), so identity != ; but the
+    parsed values are equal across calls.
+    """
+    from coral.hub.attempts import clear_attempt_cache, read_attempts, write_attempt
+    from coral.types import Attempt
+
+    clear_attempt_cache()
+    coral = tmp_path / ".coral"
+    (coral / "public" / "attempts").mkdir(parents=True)
+    for i in range(5):
+        write_attempt(
+            str(coral),
+            Attempt(
+                commit_hash=f"{i:040x}",
+                agent_id=f"agent-{i % 2}",
+                title=f"a{i}",
+                score=0.5 + i * 0.05,
+                status="improved",
+                parent_hash=None,
+                timestamp="2026-05-20T00:00:00+00:00",
+            ),
+        )
+    first = read_attempts(coral)
+    second = read_attempts(coral)
+    assert len(first) == 5 and len(second) == 5
+    # Equal values across calls (not identity — see _clone_attempt).
+    for a, b in zip(first, second, strict=True):
+        assert a.to_dict() == b.to_dict()
+
+
+def test_stat_signature_catches_inode_swap(tmp_path: Path) -> None:
+    """Codex r1 P1: atomic rename swaps inode → cache invalidates even if mtime is identical."""
+    import json as _json
+    import os
+    import tempfile as _tempfile
+
+    from coral.hub.attempts import clear_attempt_cache, read_attempt, write_attempt
+    from coral.types import Attempt
+
+    clear_attempt_cache()
+    coral = tmp_path / ".coral"
+    (coral / "public" / "attempts").mkdir(parents=True)
+    a1 = Attempt(
+        commit_hash="f" * 40,
+        agent_id="agent-1",
+        title="v1",
+        score=0.5,
+        status="improved",
+        parent_hash=None,
+        timestamp="2026-05-20T00:00:00+00:00",
+    )
+    write_attempt(str(coral), a1)
+    first = read_attempt(coral, "f" * 40)
+    assert first is not None and first.title == "v1"
+
+    # Force a same-mtime rename to a NEW inode by manually crafting the
+    # tmp+rename sequence and explicitly setting the new file's mtime
+    # to match the old one.
+    target = coral / "public" / "attempts" / ("f" * 40 + ".json")
+    old_stat = target.stat()
+    a2 = Attempt(
+        commit_hash="f" * 40,
+        agent_id="agent-1",
+        title="v2-inode-swap",
+        score=0.9,
+        status="improved",
+        parent_hash=None,
+        timestamp="2026-05-20T00:00:00+00:00",
+    )
+    fd, tmp_str = _tempfile.mkstemp(prefix=".swap.", suffix=".json.tmp", dir=str(target.parent))
+    with os.fdopen(fd, "w") as f:
+        f.write(_json.dumps(a2.to_dict()))
+    os.replace(tmp_str, target)
+    # Force mtime back to the old value to simulate the coarse-mtime race.
+    os.utime(target, ns=(old_stat.st_atime_ns, old_stat.st_mtime_ns))
+
+    # New inode → different signature → cache invalidates.
+    second = read_attempt(coral, "f" * 40)
+    assert second is not None
+    assert second.title == "v2-inode-swap"
+    assert second.score == 0.9
