@@ -59,6 +59,7 @@ _VISIBLE_COMMANDS = [
     "revert",
     "checkout",
     "heartbeat",
+    "regression",
 ]
 
 
@@ -123,6 +124,7 @@ Agent Internals:
   revert          Undo the last commit
   checkout        Reset to a previous attempt
   heartbeat       View/modify per-agent heartbeat actions
+  regression      View/manage the per-fixture baseline
 
 Run 'coral <command> --help' for details on any command."""
 
@@ -505,6 +507,45 @@ Run 'coral <command> --help' for details on any command."""
     hb_reset = hb_sub.add_parser("reset", help="Reset to task YAML defaults")
     _add_run_args(hb_reset)
 
+    p_regression = sub.add_parser(
+        "regression",
+        help="View/manage the per-fixture baseline",
+        description=(
+            "Inspect or update the team-wide regression baseline. The grader\n"
+            "daemon checks every real-mode attempt against this baseline; any\n"
+            "fixture that falls below its baseline score (within tolerance)\n"
+            "flips the attempt's status to 'regression' and surfaces the\n"
+            "offending fixtures in metadata.regressed_fixtures."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  coral regression                      Show current baseline\n"
+            "  coral regression status               Same as above\n"
+            "  coral regression promote abc123       Force a specific attempt as baseline\n"
+            "  coral regression reset --yes          Clear the baseline"
+        ),
+        formatter_class=_CommandHelpFormatter,
+    )
+    _add_run_args(p_regression)
+    p_regression.add_argument("--workdir", help="Working directory (default: cwd)")
+    reg_sub = p_regression.add_subparsers(dest="regression_command")
+
+    reg_status = reg_sub.add_parser("status", help="Show current baseline")
+    _add_run_args(reg_status)
+    reg_status.add_argument("--workdir", help="Working directory (default: cwd)")
+
+    reg_promote = reg_sub.add_parser("promote", help="Set a specific attempt as the baseline")
+    reg_promote.add_argument("hash", help="Commit hash or prefix of the attempt to promote")
+    _add_run_args(reg_promote)
+    reg_promote.add_argument("--workdir", help="Working directory (default: cwd)")
+
+    reg_reset = reg_sub.add_parser("reset", help="Delete the baseline")
+    reg_reset.add_argument(
+        "--yes", action="store_true", help="Required confirmation; without it, no-op."
+    )
+    _add_run_args(reg_reset)
+    reg_reset.add_argument("--workdir", help="Working directory (default: cwd)")
+
     # --- Parse and dispatch ---
 
     args = parser.parse_args()
@@ -518,6 +559,7 @@ Run 'coral <command> --help' for details on any command."""
     from coral.cli.eval import cmd_checkout, cmd_diff, cmd_eval, cmd_revert, cmd_wait
     from coral.cli.heartbeat import cmd_heartbeat
     from coral.cli.query import cmd_log, cmd_notes, cmd_runs, cmd_show, cmd_skills
+    from coral.cli.regression import cmd_regression
     from coral.cli.start import cmd_resume, cmd_start, cmd_status, cmd_stop
     from coral.cli.ui import cmd_ui
 
@@ -532,6 +574,7 @@ Run 'coral <command> --help' for details on any command."""
         "checkout": cmd_checkout,
         "diff": cmd_diff,
         "heartbeat": cmd_heartbeat,
+        "regression": cmd_regression,
         "log": cmd_log,
         "show": cmd_show,
         "notes": cmd_notes,

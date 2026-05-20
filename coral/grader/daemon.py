@@ -39,8 +39,16 @@ from coral.hub.attempts import (
     read_attempts,
     write_attempt,
 )
+from coral.hub.regressions import (
+    REGRESSION_CHECK_PASS,
+    REGRESSION_STATUS,
+    check_against_baseline,
+    maybe_seed_baseline,
+    promote,
+)
 from coral.types import (
     BUDGET_CLASS_GRADER_ERROR,
+    BUDGET_CLASS_REAL,
     Attempt,
     Task,
     get_budget_class,
@@ -316,7 +324,7 @@ def _grade_one(
     score: float | None = None
     status = "crashed"
     feedback = ""
-    metadata: dict = {}
+    metadata: dict[str, object] = {}
 
     try:
         _add_isolated_worktree(repo_dir, attempt.commit_hash, checkout_path)
@@ -331,6 +339,22 @@ def _grade_one(
             score = bundle.aggregated
             feedback = _build_feedback(bundle)
             metadata = dict(getattr(bundle, "metadata", None) or {})
+            # Preserve per-fixture scores so downstream tooling (regression
+            # promote, dashboard breakdown view) can read named values, not
+            # just the aggregate.
+            bundle_scores = getattr(bundle, "scores", None) or {}
+            if bundle_scores:
+                score_breakdown: dict[str, float] = {}
+                for name, s in bundle_scores.items():
+                    v = getattr(s, "value", None)
+                    if v is None:
+                        continue
+                    try:
+                        score_breakdown[name] = float(v)
+                    except (TypeError, ValueError):
+                        continue
+                if score_breakdown:
+                    metadata["score_breakdown"] = score_breakdown
             status = _compute_status(
                 score,
                 attempt.agent_id,
@@ -338,6 +362,45 @@ def _grade_one(
                 coral_dir,
                 minimize,
             )
+            # --- Regression memory --------------------------------------- #
+            # Compare per-fixture scores against the team baseline.
+            # Tune-mode and grader-error attempts skip the check (tune runs a
+            # different workload, so its scores are not on the same scale).
+            if budget_class == BUDGET_CLASS_REAL:
+                check = check_against_baseline(coral_dir, bundle)
+                metadata["regression_check"] = check.status
+                if check.failed:
+                    metadata["regressed_fixtures"] = check.regressed_fixtures
+                    # Baseline regression dominates whatever _compute_status
+                    # decided — the agent broke a previously-held capability.
+                    status = REGRESSION_STATUS
+                    feedback = (
+                        f"Regression: fixtures {', '.join(check.regressed_fixtures)} "
+                        f"fell below baseline. Previous: see "
+                        f".coral/public/regressions/baseline.json.\n{feedback}"
+                    ).strip()
+                elif check.status == REGRESSION_CHECK_PASS and status == "improved":
+                    # All fixtures held or improved AND aggregate improved →
+                    # promote this attempt as the new baseline.
+                    promote(
+                        coral_dir,
+                        bundle,
+                        attempt.commit_hash,
+                        by=attempt.agent_id,
+                        event="promote",
+                        minimize=minimize,
+                    )
+                elif check.status == "none" and status == "improved":
+                    # No baseline yet — seed it from this attempt's bundle.
+                    maybe_seed_baseline(
+                        coral_dir,
+                        bundle,
+                        attempt.commit_hash,
+                        by=attempt.agent_id,
+                        minimize=minimize,
+                    )
+                if check.missing_fixtures:
+                    metadata["baseline_missing_fixtures"] = check.missing_fixtures
         finally:
             _remove_worktree(repo_dir, checkout_path)
     except TimeoutError:

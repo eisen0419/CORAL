@@ -157,7 +157,18 @@ class Attempt:
     agent_id: str
     title: str
     score: float | None
-    status: str  # "pending" | "improved" | "baseline" | "regressed" | "reverted" | "crashed" | "timeout"
+    status: str
+    # One of:
+    #   "pending"    — grader hasn't finalized yet.
+    #   "improved"   — beat this agent's previous best (self-relative).
+    #   "baseline"   — same as previous best (self-relative).
+    #   "regressed"  — worse than this agent's previous best (self-relative).
+    #   "regression" — broke a team-wide per-fixture baseline (set in
+    #                  .coral/public/regressions/baseline.json). Dominates
+    #                  the self-relative status above when both apply.
+    #   "reverted"   — agent ran `coral revert` on this attempt.
+    #   "crashed"    — grader raised; see feedback.
+    #   "timeout"    — grader exceeded grader.timeout.
     parent_hash: str | None
     timestamp: str
     feedback: str = ""
