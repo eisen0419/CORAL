@@ -119,6 +119,26 @@ def cmd_show(args: argparse.Namespace) -> None:
     if data.get("feedback"):
         print(f"Feedback: {data['feedback']}")
 
+    # Failure bundle (crash / timeout / regression) — print a short summary
+    # so the user doesn't have to read the JSON to know there's diagnostic
+    # context available.
+    fb_relpath = data.get("metadata", {}).get("failure_bundle")
+    if fb_relpath:
+        from coral.hub.failures import read_meta, read_stderr_tail
+
+        bundle_meta = read_meta(coral_dir, data["commit_hash"])
+        print("\n--- Failure bundle ---")
+        print(f"Path:    .coral/public/{fb_relpath}/")
+        if bundle_meta:
+            print(f"Kind:    {bundle_meta.get('kind', '?')}")
+            if bundle_meta.get("summary"):
+                print(f"Summary: {bundle_meta['summary']}")
+            if bundle_meta.get("regressed_fixtures"):
+                print(f"Broke:   {', '.join(bundle_meta['regressed_fixtures'])}")
+        tail = read_stderr_tail(coral_dir, data["commit_hash"], max_bytes=2048)
+        if tail:
+            print(f"\nstderr (tail):\n{tail}")
+
     commit = data["commit_hash"]
     git_args = ["git", "show", commit]
     if not getattr(args, "diff", False):

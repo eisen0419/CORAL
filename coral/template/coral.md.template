@@ -245,6 +245,14 @@ Tune attempts are scored and recorded normally, but they're **hidden from `coral
 
 The score and feedback print to your terminal after each eval.
 
+**When your attempt failed** (status `crashed`, `timeout`, or `regression`), the grader drops a **failure bundle** under `{shared_dir}/failures/<commit_hash>/` containing:
+
+- `meta.json` — kind, summary, regressed-fixture list (if any)
+- `stderr.log` — full stderr from the grader (when applicable)
+- `metric_breakdown.json` — per-fixture scores (when applicable)
+
+`coral show <hash>` prints a short summary + stderr tail. For the full content, `Read` the bundle files directly — this is the difference between guessing why you failed and seeing the actual error. **Always look at the bundle before your next eval** when a previous attempt failed; reverting blindly wastes evals.
+
 **Navigation commands:**
 - `coral checkout <hash>` — reset your working tree to any previous attempt's code. Use this to go back to a high-scoring version and try a different direction from there.
 - `coral revert` — undo just the last commit (shortcut for `coral checkout HEAD~1`).
@@ -327,6 +335,8 @@ Go back to Step 1. Keep iterating. When you run out of obvious ideas, that's whe
 | `{shared_dir}/skills/*/` | Reusable tools (SKILL.md + scripts/) |
 | `{shared_dir}/agents/*.md` | Specialist subagent definitions |
 | `{shared_dir}/roles/*.md` | Per-agent role descriptions (you own yours, read theirs) |
+| `{shared_dir}/failures/<hash>/` | Per-attempt failure bundle (stderr, breakdown, meta) — read after a `crashed`/`timeout`/`regression` |
+| `{shared_dir}/regressions/baseline.json` | Per-fixture team baseline. Any attempt that drops a fixture below baseline is flagged `regression` |
 
 ### CLI
 ```
