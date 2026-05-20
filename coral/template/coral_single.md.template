@@ -227,6 +227,10 @@ coral notes --read all            # Read entire file
 coral skills                         # List all skills with descriptions
 coral skills --read <name>           # Show skill details + files
 
+# Baseline (per-fixture)
+coral regression                     # Show current team baseline; failures below it
+                                     # flip your attempt to status="regression" with a bundle
+
 # Heartbeat
 coral heartbeat                      # Show your heartbeat actions
 coral heartbeat set reflect --every 3           # Reflect every 3 evals
