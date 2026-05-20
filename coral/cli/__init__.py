@@ -398,6 +398,18 @@ Run 'coral <command> --help' for details on any command."""
             "trigger pivot prompts."
         ),
     )
+    p_eval.add_argument(
+        "--allow-secrets",
+        action="store_true",
+        default=False,
+        help=(
+            "Downgrade the pre-commit secret scan from fail-closed (default) "
+            "to warn-only. Commits with credential-shaped content will be "
+            "tagged in attempt.metadata.secret_hits but allowed through. "
+            "Use only when a fixture legitimately contains a credential-shaped "
+            "sigil (e.g. PEM header in an HSM mock)."
+        ),
+    )
 
     p_wait = sub.add_parser(
         "wait",

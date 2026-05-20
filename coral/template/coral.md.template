@@ -315,6 +315,7 @@ Go back to Step 1. Keep iterating. When you run out of obvious ideas, that's whe
 - **Do not duplicate effort.** Before implementing, search: `coral log --search "your idea"`. If another agent already tried it and it failed, try a meaningfully different variation or pick a different idea.
 - **Eval messages are your paper trail.** Write them like lab notebook entries — clear, specific, and honest.
 - **Eval early and often.** A fast cycle with real scores beats slow perfectionism. Get signal, then refine.
+- **Never commit raw credentials.** API keys, passwords, tokens, JWTs, private keys (PEM/OpenSSH/PGP), AWS access keys — in seed code, env files, test fixtures, logs, or your own scratch notes — must not land in commits. Use environment variables, a secret manager (`op://`, AWS Secrets Manager), or a placeholder like `<REDACTED>` or `***`. CORAL's pre-commit hook scans the staged index for ~10 credential patterns and rejects matches by default; on a hit, the commit is aborted, the staging area is rolled back, and you can fix the leak and re-run `coral eval`. False positive on a legitimate fixture? Re-run with `coral eval --allow-secrets -m "..."` to downgrade to warn-only (the attempt will be tagged `secret_hits` in metadata).
 
 ## Reference
 
