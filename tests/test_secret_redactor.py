@@ -41,7 +41,11 @@ from coral.security import (
             "private_key_pem",
             "-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQVYBF...\n",
         ),
-        ("long_hex_secret", "sha=" + "a1b2c3d4" * 6),  # 48 hex chars
+        # long_hex_secret now requires a credential keyword nearby — bare
+        # 40+ hex (e.g. a git SHA `sha=a1b2c3d4...`) is intentionally NOT
+        # flagged. P2 fix from codex review r1.
+        ("long_hex_secret", "secret: " + "a1b2c3d4" * 6),  # 48 hex w/ keyword
+        ("long_hex_secret", "bearer " + "deadbeef" * 5 + "00"),  # 42 hex
         ("credential_assignment", 'password = "supersecret"'),
         ("credential_assignment", "api_key: abcdef123456"),
         ("credential_assignment", "access-key='myaccessvalue'"),
@@ -69,6 +73,15 @@ def test_each_pattern_detects(name: str, sample: str) -> None:
         "We compared password complexity policies.",
         # PEM-like phrase without the literal header
         "begins with a private key",
+        # Git SHA (40 hex) without credential context — must NOT fire.
+        # P2 fix from codex review r1.
+        "commit abc123def456789012345678901234567890abcd happened",
+        "sha=" + "a1b2c3d4" * 6,  # 48 hex — git SHA-256 / content hash shape
+        # Documented redaction placeholders must NOT be flagged.
+        'api_key = "<REDACTED>"',
+        'token: "***"',
+        "password = \"placeholder\"",
+        "secret: changeme",
     ],
 )
 def test_innocuous_content_clean(sample: str) -> None:
@@ -158,3 +171,29 @@ def test_pattern_dedupe_in_hits() -> None:
     content = "k=sk-ant-" + "a" * 30 + "\nk2=sk-ant-" + "b" * 30
     hits = detect_secrets(content)
     assert hits.count("anthropic_key") == 1
+
+
+# --- Codex review r2 fixes: long_hex_secret edge cases ----------------------
+
+
+def test_long_hex_embedded_keyword_not_flagged() -> None:
+    """Keyword must be its own word, not a substring of a larger identifier."""
+    # `presentcrosswordtoken` ends with "token" but isn't the keyword.
+    sample = "presentcrosswordtoken " + "a" * 48
+    assert "long_hex_secret" not in detect_secrets(sample)
+
+
+def test_long_hex_secret_key_flagged() -> None:
+    """`secret_key`, `client_secret`, `private_key`, etc. trigger the pattern."""
+    for keyword in ("secret_key", "client_secret", "private_key"):
+        sample = f"{keyword} = " + "a" * 48
+        hits = detect_secrets(sample)
+        assert "long_hex_secret" in hits, f"{keyword} should match: got {hits}"
+
+
+def test_long_hex_does_not_match_across_newlines() -> None:
+    """A 40-hex blob two lines after a keyword is not that keyword's value."""
+    sample = "secret:\nUnrelated text\n" + "a" * 48
+    # The hex isn't on the same line as `secret:` — must NOT fire long_hex_secret.
+    # (credential_assignment also won't fire — `secret:\n` has no value on its line.)
+    assert "long_hex_secret" not in detect_secrets(sample)

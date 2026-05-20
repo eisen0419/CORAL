@@ -10,19 +10,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 
 from coral.cli._helpers import find_coral_dir
 from coral.hub.attempts import read_attempt
 from coral.hub.regressions import (
-    Baseline,
-    FixtureBaseline,
-    _append_history,
     clear_baseline,
+    promote,
     read_baseline,
-    write_baseline,
 )
+from coral.types import Score, ScoreBundle
 
 
 def _resolve_coral_dir(args: argparse.Namespace) -> Path:
@@ -108,28 +105,31 @@ def cmd_regression_promote(args: argparse.Namespace) -> None:
             sys.exit(1)
         score_breakdown = {"score": float(attempt.score)}
 
-    fixtures = {
-        name: FixtureBaseline(score=float(value), tolerance=0.0, minimize=False)
-        for name, value in score_breakdown.items()
-    }
-    baseline = Baseline(
-        baseline_commit=target,
-        set_at=datetime.now(UTC).isoformat(),
-        set_by="manual",
-        fixtures=fixtures,
-    )
-    write_baseline(coral_dir, baseline)
-    _append_history(
-        coral_dir,
-        {
-            "at": baseline.set_at,
-            "event": "manual",
-            "commit": target,
-            "by": "manual",
-            "fixtures": {name: fb.to_dict() for name, fb in fixtures.items()},
+    # Build a synthetic ScoreBundle from the persisted breakdown and route
+    # through promote(), which acquires the baseline lock + applies the
+    # merge / preserve semantics. Bypassing promote() (writing baseline.json
+    # directly) would race the daemon's check_and_maybe_promote and skip
+    # the missing-fixture preservation contract.
+    synthetic_bundle = ScoreBundle(
+        scores={
+            name: Score(value=float(value), name=name) for name, value in score_breakdown.items()
         },
+        aggregated=float(attempt.score) if attempt.score is not None else None,
     )
-    print(f"Promoted {target[:12]} as new baseline ({len(fixtures)} fixture(s)).")
+    # `retire_missing=True` matches the historical semantics of the
+    # explicit `coral regression promote` command: the operator is
+    # asserting "this attempt's fixture set IS the new baseline". The
+    # safety net stays in place for the automatic daemon path
+    # (retire_missing=False there).
+    baseline = promote(
+        coral_dir,
+        synthetic_bundle,
+        commit_hash=target,
+        by="manual",
+        event="manual",
+        retire_missing=True,
+    )
+    print(f"Promoted {target[:12]} as new baseline ({len(baseline.fixtures)} fixture(s)).")
 
 
 def cmd_regression_reset(args: argparse.Namespace) -> None:

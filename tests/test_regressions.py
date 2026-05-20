@@ -27,6 +27,7 @@ from coral.hub.regressions import (
     Baseline,
     FixtureBaseline,
     check_against_baseline,
+    check_and_maybe_promote,
     clear_baseline,
     maybe_seed_baseline,
     promote,
@@ -400,3 +401,189 @@ def test_no_promote_when_aggregate_same(tmp_path: Path) -> None:
         assert baseline_after.baseline_commit == baseline_before.baseline_commit
     finally:
         sys.path.pop(0)
+
+
+# --- Codex review r1 fixes: P1#1, P1#2, per-fixture direction ----------------
+
+
+def _make_bundle(scores_dict: dict, aggregated: float | None = None) -> ScoreBundle:
+    if aggregated is None and scores_dict:
+        # Tolerate scores_dict values being either floats or (value, metadata) tuples.
+        nums = [v if not isinstance(v, tuple) else v[0] for v in scores_dict.values()]
+        aggregated = sum(nums) / len(nums)
+    scores = {}
+    for n, v in scores_dict.items():
+        if isinstance(v, tuple):
+            value, meta = v
+            scores[n] = Score(value=value, name=n, metadata=meta)
+        else:
+            scores[n] = Score(value=v, name=n)
+    return ScoreBundle(scores=scores, aggregated=aggregated)
+
+
+def test_promote_preserves_missing_fixtures(tmp_path: Path) -> None:
+    """P1#1: a bundle that drops fixture `b` must NOT erase b's baseline."""
+    write_baseline(
+        tmp_path,
+        Baseline(
+            "h1",
+            "t",
+            "agent",
+            fixtures={
+                "a": FixtureBaseline(0.8),
+                "b": FixtureBaseline(0.9),
+            },
+        ),
+    )
+    # Promote with only fixture "a" — fixture "b" should be preserved.
+    promote(tmp_path, _make_bundle({"a": 0.85}), "h2", "agent-2")
+    after = read_baseline(tmp_path)
+    assert after is not None
+    assert "a" in after.fixtures
+    assert "b" in after.fixtures
+    assert after.fixtures["a"].score == 0.85  # updated
+    assert after.fixtures["b"].score == 0.9  # preserved unchanged
+
+
+def test_promote_retire_missing_drops_fixtures(tmp_path: Path) -> None:
+    """`retire_missing=True` explicitly removes fixtures missing from bundle."""
+    write_baseline(
+        tmp_path,
+        Baseline(
+            "h1",
+            "t",
+            "agent",
+            fixtures={"a": FixtureBaseline(0.8), "b": FixtureBaseline(0.9)},
+        ),
+    )
+    promote(tmp_path, _make_bundle({"a": 0.85}), "h2", "agent-2", retire_missing=True)
+    after = read_baseline(tmp_path)
+    assert after is not None
+    assert "a" in after.fixtures
+    assert "b" not in after.fixtures
+
+
+def test_promote_history_records_preserved_and_retired(tmp_path: Path) -> None:
+    """history.jsonl must surface the preserved / retired fixture lists."""
+    write_baseline(
+        tmp_path,
+        Baseline(
+            "h1",
+            "t",
+            "agent",
+            fixtures={"a": FixtureBaseline(0.8), "b": FixtureBaseline(0.9)},
+        ),
+    )
+    promote(tmp_path, _make_bundle({"a": 0.85}), "h2", "agent-2")
+    history_lines = (
+        (tmp_path / "public" / "regressions" / "history.jsonl").read_text().strip().splitlines()
+    )
+    last = json.loads(history_lines[-1])
+    assert last["preserved_fixtures"] == ["b"]
+    assert "retired_fixtures" not in last
+
+
+def test_per_fixture_minimize_from_score_metadata(tmp_path: Path) -> None:
+    """P2: per-fixture direction from Score.metadata['minimize']."""
+    # accuracy is higher-better, latency_ms is lower-better.
+    bundle = _make_bundle(
+        {
+            "accuracy": (0.85, {"minimize": False}),
+            "latency_ms": (50.0, {"minimize": True}),
+        }
+    )
+    promote(tmp_path, bundle, "h1", "agent-1")
+    baseline = read_baseline(tmp_path)
+    assert baseline is not None
+    assert baseline.fixtures["accuracy"].minimize is False
+    assert baseline.fixtures["latency_ms"].minimize is True
+    # Verify regression direction now follows per-fixture flag.
+    assert not baseline.fixtures["latency_ms"].regressed(45.0)  # faster ok
+    assert baseline.fixtures["latency_ms"].regressed(80.0)  # slower regresses
+
+
+def test_check_and_maybe_promote_seeds_when_no_baseline(tmp_path: Path) -> None:
+    """P1#2: atomic API seeds baseline when none exists and aggregate improved."""
+    bundle = _make_bundle({"a": 0.8, "b": 0.9})
+    check = check_and_maybe_promote(
+        tmp_path,
+        bundle,
+        commit_hash="h1",
+        by="agent-1",
+        aggregate_improved=True,
+    )
+    assert check.status == REGRESSION_CHECK_NONE
+    baseline = read_baseline(tmp_path)
+    assert baseline is not None
+    assert baseline.baseline_commit == "h1"
+
+
+def test_check_and_maybe_promote_no_seed_when_not_improved(tmp_path: Path) -> None:
+    """Don't seed if aggregate isn't improved (e.g. status='baseline')."""
+    bundle = _make_bundle({"a": 0.5})
+    check = check_and_maybe_promote(
+        tmp_path,
+        bundle,
+        "h1",
+        "agent-1",
+        aggregate_improved=False,
+    )
+    assert check.status == REGRESSION_CHECK_NONE
+    assert read_baseline(tmp_path) is None
+
+
+def test_check_and_maybe_promote_blocks_regression(tmp_path: Path) -> None:
+    """Failing fixture → REGRESSION_CHECK_FAIL; baseline NOT promoted."""
+    write_baseline(
+        tmp_path,
+        Baseline(
+            "h0",
+            "t",
+            "agent",
+            fixtures={"a": FixtureBaseline(0.8), "b": FixtureBaseline(0.9)},
+        ),
+    )
+    bundle = _make_bundle({"a": 0.85, "b": 0.4})  # b regresses
+    check = check_and_maybe_promote(
+        tmp_path, bundle, "h1", "agent-1", aggregate_improved=True
+    )
+    assert check.status == REGRESSION_CHECK_FAIL
+    assert check.regressed_fixtures == ["b"]
+    # Baseline untouched.
+    baseline = read_baseline(tmp_path)
+    assert baseline is not None
+    assert baseline.baseline_commit == "h0"
+    assert baseline.fixtures["b"].score == 0.9
+
+
+def test_check_and_maybe_promote_promotes_on_pass_improved(tmp_path: Path) -> None:
+    """Pass + aggregate_improved → baseline merged + history records promote."""
+    write_baseline(
+        tmp_path,
+        Baseline("h0", "t", "agent", fixtures={"a": FixtureBaseline(0.7)}),
+    )
+    bundle = _make_bundle({"a": 0.85})
+    check = check_and_maybe_promote(
+        tmp_path, bundle, "h1", "agent-1", aggregate_improved=True
+    )
+    assert check.status == REGRESSION_CHECK_PASS
+    baseline = read_baseline(tmp_path)
+    assert baseline is not None
+    assert baseline.baseline_commit == "h1"
+    assert baseline.fixtures["a"].score == 0.85
+
+
+def test_check_and_maybe_promote_skipped_when_no_observed(tmp_path: Path) -> None:
+    """Empty bundle.scores → SKIPPED, no write."""
+    write_baseline(
+        tmp_path,
+        Baseline("h0", "t", "agent", fixtures={"a": FixtureBaseline(0.7)}),
+    )
+    bundle = ScoreBundle(scores={}, aggregated=None)
+    check = check_and_maybe_promote(
+        tmp_path, bundle, "h1", "agent-1", aggregate_improved=True
+    )
+    assert check.status == REGRESSION_CHECK_SKIPPED
+    baseline = read_baseline(tmp_path)
+    assert baseline is not None
+    assert baseline.baseline_commit == "h0"  # unchanged
