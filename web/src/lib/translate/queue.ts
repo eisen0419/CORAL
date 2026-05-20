@@ -63,7 +63,7 @@ function releaseSlot(): void {
 
 async function doTranslate(text: string): Promise<string> {
   const settings = getSettings();
-  if (!settings.enabled || !settings.apiKey) {
+  if (!settings.enabled) {
     throw new Error("translation_disabled");
   }
   let lastErr: unknown = null;

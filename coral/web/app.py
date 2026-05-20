@@ -30,6 +30,7 @@ from coral.web.api import (
     switch_run,
 )
 from coral.web.events import FileWatcher, sse_endpoint
+from coral.web.translate import translate, translate_health
 
 
 def create_app(coral_dir: Path, results_dir: Path | None = None) -> Starlette:
@@ -89,6 +90,8 @@ def create_app(coral_dir: Path, results_dir: Path | None = None) -> Starlette:
         Route("/api/runs", get_runs),
         Route("/api/runs/switch", switch_run, methods=["POST"]),
         Route("/api/events", sse_endpoint),
+        Route("/api/translate", translate, methods=["POST"]),
+        Route("/api/translate/health", translate_health),
     ]
 
     # Mount static files if the directory exists (post-build)

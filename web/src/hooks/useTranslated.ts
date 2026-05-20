@@ -87,9 +87,9 @@ export function useTranslated(
         setStatus("ready");
         return;
       }
-      // Not cached. Check settings; if API not configured, mark disabled.
+      // Not cached. Check settings; if not enabled, mark disabled.
       const s = getSettings();
-      if (!s.enabled || !s.apiKey) {
+      if (!s.enabled) {
         setStatus("disabled");
         return;
       }
@@ -131,9 +131,9 @@ export function useTranslated(
     if (passThrough) return { text: safe, status: "ready", retry: () => setTick((n) => n + 1) };
     if (translated != null) return { text: translated, status, retry: () => setTick((n) => n + 1) };
     if (status === "disabled") {
-      // User hasn't configured an API key. We still hide the English text;
-      // show a hint that translation needs setup.
-      return { text: "（请先在设置中填入翻译 API 密钥）", status: "disabled", retry: () => setTick((n) => n + 1) };
+      // Translation feature is off. The Chinese view shouldn't leak
+      // English, so we surface a localized hint instead.
+      return { text: "（翻译未启用，请打开设置）", status: "disabled", retry: () => setTick((n) => n + 1) };
     }
     if (status === "error") {
       return { text: "翻译失败", status: "error", retry: () => setTick((n) => n + 1) };

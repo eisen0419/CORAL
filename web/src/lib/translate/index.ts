@@ -5,6 +5,8 @@ export {
   setSettings,
   bumpUsage,
   resetUsage,
-  MODEL_OPTIONS,
+  FALLBACK_MODELS,
 } from "./settings";
+export { fetchBackendHealth } from "./providers";
 export type { TranslateSettings, Provider } from "./settings";
+export type { BackendHealth } from "./providers";

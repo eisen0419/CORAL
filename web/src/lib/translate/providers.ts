@@ -1,8 +1,14 @@
 /**
- * LLM provider adapters for translation.
+ * Translation transport.
  *
- * Each provider returns { text, tokensIn, tokensOut }.
- * Errors bubble up — the caller handles retry/fallback.
+ * The browser does NOT hold any LLM API key. All translation requests
+ * go through the CORAL backend's POST /api/translate endpoint, which
+ * reads the API key from a process env var injected via
+ *   with-secrets llm -- coral ui ...
+ *
+ * This satisfies `~/.claude/rules/secrets.md`: the key never lives in
+ * localStorage, never appears in the network response, never lands in
+ * the chat transcript. The user manages secrets entirely via 1Password.
  */
 
 import type { Provider, TranslateSettings } from "./settings";
@@ -11,129 +17,45 @@ export interface TranslationResult {
   text: string;
   tokensIn: number;
   tokensOut: number;
+  provider: string;
+  model: string;
 }
 
-const SYSTEM_PROMPT =
-  "You translate technical English text about AI agents and multi-agent " +
-  "systems into Simplified Chinese (zh-CN). The text comes from CORAL, a " +
-  "framework where AI agents iteratively improve code via grading. " +
-  "Rules: " +
-  "(1) Keep code identifiers, file paths, commit hashes, agent IDs, " +
-  "function names, command-line flags, and version numbers in English. " +
-  "(2) Preserve markdown / code-block formatting exactly. " +
-  "(3) Use natural fluent Chinese for prose. " +
-  "(4) Translate concept words (e.g. 'reasoning' → '推理', 'attempt' → '尝试'). " +
-  "(5) Output the translation ONLY — no preamble, no explanation, no quote marks.";
-
-function buildUserPrompt(text: string): string {
-  return `Translate the following text into Simplified Chinese. Output only the translation.\n\n${text}`;
+export interface BackendHealth {
+  available: Record<Provider, boolean>;
+  default: Provider | null;
+  models: Record<Provider, string[]>;
+  default_models: Record<Provider, string>;
 }
 
-async function callAnthropic(
-  text: string,
-  s: TranslateSettings,
-): Promise<TranslationResult> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": s.apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model: s.model,
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildUserPrompt(text) }],
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Anthropic ${res.status}: ${body.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  const out: string = data.content?.[0]?.text ?? "";
-  return {
-    text: out.trim(),
-    tokensIn: data.usage?.input_tokens ?? 0,
-    tokensOut: data.usage?.output_tokens ?? 0,
-  };
+export async function fetchBackendHealth(): Promise<BackendHealth> {
+  const r = await fetch("/api/translate/health");
+  if (!r.ok) throw new Error(`health ${r.status}`);
+  return (await r.json()) as BackendHealth;
 }
-
-async function callOpenAI(
-  text: string,
-  s: TranslateSettings,
-): Promise<TranslationResult> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${s.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: s.model,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: buildUserPrompt(text) },
-      ],
-      temperature: 0.2,
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`OpenAI ${res.status}: ${body.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  const out: string = data.choices?.[0]?.message?.content ?? "";
-  return {
-    text: out.trim(),
-    tokensIn: data.usage?.prompt_tokens ?? 0,
-    tokensOut: data.usage?.completion_tokens ?? 0,
-  };
-}
-
-async function callDeepseek(
-  text: string,
-  s: TranslateSettings,
-): Promise<TranslationResult> {
-  const res = await fetch("https://api.deepseek.com/chat/completions", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${s.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: s.model,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: buildUserPrompt(text) },
-      ],
-      temperature: 0.2,
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`DeepSeek ${res.status}: ${body.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  const out: string = data.choices?.[0]?.message?.content ?? "";
-  return {
-    text: out.trim(),
-    tokensIn: data.usage?.prompt_tokens ?? 0,
-    tokensOut: data.usage?.completion_tokens ?? 0,
-  };
-}
-
-const DISPATCH: Record<Provider, (t: string, s: TranslateSettings) => Promise<TranslationResult>> = {
-  anthropic: callAnthropic,
-  openai: callOpenAI,
-  deepseek: callDeepseek,
-};
 
 export async function translateRaw(
   text: string,
   s: TranslateSettings,
 ): Promise<TranslationResult> {
-  return DISPATCH[s.provider](text, s);
+  const r = await fetch("/api/translate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      text,
+      provider: s.provider,
+      model: s.model,
+    }),
+  });
+  if (!r.ok) {
+    let detail = "";
+    try {
+      const body = await r.json();
+      detail = body.detail || body.error || "";
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`backend ${r.status}: ${detail.slice(0, 200)}`);
+  }
+  return (await r.json()) as TranslationResult;
 }

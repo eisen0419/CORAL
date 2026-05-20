@@ -1,17 +1,19 @@
 /**
- * Translation settings stored in localStorage so the user only enters
- * their API key once. No secrets ever leave the browser — translation
- * requests go straight to the LLM provider.
+ * Translation settings stored in localStorage.
+ *
+ * NOTE: API keys are NOT stored here. The backend reads them from
+ * environment variables injected via `with-secrets llm -- coral ui ...`,
+ * per `~/.claude/rules/secrets.md`. The frontend only persists user
+ * preferences (enabled, provider, model) and a rolling token counter.
  */
 
-const KEY = "coral-translate-settings-v1";
+const KEY = "coral-translate-settings-v2";
 
-export type Provider = "anthropic" | "openai" | "deepseek";
+export type Provider = "deepseek" | "openai" | "anthropic" | "zhipu";
 
 export interface TranslateSettings {
   enabled: boolean;
   provider: Provider;
-  apiKey: string;
   model: string;
   // Counters for the UI to display approximate usage
   tokensIn: number;
@@ -21,18 +23,23 @@ export interface TranslateSettings {
 
 const DEFAULTS: TranslateSettings = {
   enabled: false,
-  provider: "anthropic",
-  apiKey: "",
-  model: "claude-haiku-4-5-20251001",
+  provider: "deepseek",
+  model: "deepseek-chat",
   tokensIn: 0,
   tokensOut: 0,
   requests: 0,
 };
 
-export const MODEL_OPTIONS: Record<Provider, string[]> = {
-  anthropic: ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"],
-  openai: ["gpt-4o-mini", "gpt-4o"],
-  deepseek: ["deepseek-chat"],
+// Fallback model list used before /api/translate/health returns.
+export const FALLBACK_MODELS: Record<Provider, string[]> = {
+  deepseek: ["deepseek-chat", "deepseek-reasoner"],
+  openai: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"],
+  anthropic: [
+    "claude-haiku-4-5-20251001",
+    "claude-sonnet-4-6",
+    "claude-opus-4-7",
+  ],
+  zhipu: ["glm-4-flash", "glm-4-plus", "glm-4-air"],
 };
 
 export function getSettings(): TranslateSettings {
@@ -52,7 +59,6 @@ export function setSettings(patch: Partial<TranslateSettings>): TranslateSetting
   } catch {
     /* ignore */
   }
-  // Notify listeners (the SettingsModal and useTranslated hook)
   window.dispatchEvent(new CustomEvent("coral-translate-settings-changed"));
   return next;
 }
