@@ -51,6 +51,7 @@ _VISIBLE_COMMANDS = [
     "show",
     "notes",
     "skills",
+    "lanes",
     "runs",
     "ui",
     "eval",
@@ -59,6 +60,8 @@ _VISIBLE_COMMANDS = [
     "revert",
     "checkout",
     "heartbeat",
+    "regression",
+    "archive",
 ]
 
 
@@ -111,6 +114,7 @@ Inspecting Results:
   show            Show details of a specific attempt
   notes           Browse shared notes
   skills          Browse shared skills
+  lanes           List active focus-note lanes (per-agent declared directions)
   runs            List runs (active only; --all for stopped)
 
 Dashboard:
@@ -123,6 +127,7 @@ Agent Internals:
   revert          Undo the last commit
   checkout        Reset to a previous attempt
   heartbeat       View/modify per-agent heartbeat actions
+  regression      View/manage the per-fixture baseline
 
 Run 'coral <command> --help' for details on any command."""
 
@@ -243,6 +248,13 @@ Run 'coral <command> --help' for details on any command."""
     p_log.add_argument("--recent", action="store_true", help="Sort by time instead of score")
     p_log.add_argument("--agent", help="Filter by agent ID")
     p_log.add_argument("--search", help="Full-text search")
+    p_log.add_argument(
+        "--include-archived",
+        action="store_true",
+        default=False,
+        dest="include_archived",
+        help="Include attempts that were hidden via `coral archive`",
+    )
     g_class = p_log.add_mutually_exclusive_group()
     g_class.add_argument(
         "--all",
@@ -305,6 +317,19 @@ Run 'coral <command> --help' for details on any command."""
     )
     p_notes.add_argument("--diff", metavar="HASH", help="Show diff for a checkpoint commit")
     _add_run_args(p_notes)
+
+    p_lanes = sub.add_parser(
+        "lanes",
+        help="List active focus-note lanes",
+        description=(
+            "Show every agent's currently-declared focus lane (from "
+            ".coral/public/notes/focus-*.md). Useful before picking your "
+            "own direction — same lane + same posture as a teammate "
+            "duplicates effort."
+        ),
+        formatter_class=_CommandHelpFormatter,
+    )
+    _add_run_args(p_lanes)
 
     p_skills = sub.add_parser(
         "skills",
@@ -396,6 +421,18 @@ Run 'coral <command> --help' for details on any command."""
             "excluded from the agent's plateau / heartbeat budget. Use for "
             "hyperparameter sweeps and config exploration that shouldn't "
             "trigger pivot prompts."
+        ),
+    )
+    p_eval.add_argument(
+        "--allow-secrets",
+        action="store_true",
+        default=False,
+        help=(
+            "Downgrade the pre-commit secret scan from fail-closed (default) "
+            "to warn-only. Commits with credential-shaped content will be "
+            "tagged in attempt.metadata.secret_hits but allowed through. "
+            "Use only when a fixture legitimately contains a credential-shaped "
+            "sigil (e.g. PEM header in an HSM mock)."
         ),
     )
 
@@ -493,6 +530,113 @@ Run 'coral <command> --help' for details on any command."""
     hb_reset = hb_sub.add_parser("reset", help="Reset to task YAML defaults")
     _add_run_args(hb_reset)
 
+    p_regression = sub.add_parser(
+        "regression",
+        help="View/manage the per-fixture baseline",
+        description=(
+            "Inspect or update the team-wide regression baseline. The grader\n"
+            "daemon checks every real-mode attempt against this baseline; any\n"
+            "fixture that falls below its baseline score (within tolerance)\n"
+            "flips the attempt's status to 'regression' and surfaces the\n"
+            "offending fixtures in metadata.regressed_fixtures."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  coral regression                      Show current baseline\n"
+            "  coral regression status               Same as above\n"
+            "  coral regression promote abc123       Force a specific attempt as baseline\n"
+            "  coral regression reset --yes          Clear the baseline"
+        ),
+        formatter_class=_CommandHelpFormatter,
+    )
+    _add_run_args(p_regression)
+    p_regression.add_argument("--workdir", help="Working directory (default: cwd)")
+    reg_sub = p_regression.add_subparsers(dest="regression_command")
+
+    reg_status = reg_sub.add_parser("status", help="Show current baseline")
+    _add_run_args(reg_status)
+    reg_status.add_argument("--workdir", help="Working directory (default: cwd)")
+
+    reg_promote = reg_sub.add_parser("promote", help="Set a specific attempt as the baseline")
+    reg_promote.add_argument("hash", help="Commit hash or prefix of the attempt to promote")
+    _add_run_args(reg_promote)
+    reg_promote.add_argument("--workdir", help="Working directory (default: cwd)")
+
+    reg_reset = reg_sub.add_parser("reset", help="Delete the baseline")
+    reg_reset.add_argument(
+        "--yes", action="store_true", help="Required confirmation; without it, no-op."
+    )
+    _add_run_args(reg_reset)
+    reg_reset.add_argument("--workdir", help="Working directory (default: cwd)")
+
+    p_archive = sub.add_parser(
+        "archive",
+        help="Hide low-value attempts from the leaderboard (non-destructive)",
+        description=(
+            "Mark attempts as archived so they're hidden from `coral log`,\n"
+            "`coral notes`, search results, and dashboard listings — without\n"
+            "deleting the underlying JSON. Useful late in a run when the\n"
+            "leaderboard is drowning in low-score / crashed attempts and you\n"
+            "want to focus the team on the surviving signal."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  coral archive list                                            See what's already archived\n"
+            "  coral archive run --score-below 0.3                           Dry-run by score\n"
+            "  coral archive run --score-below 0.3 --apply                   Execute\n"
+            "  coral archive run --status crashed,timeout --apply            Hide all grader errors\n"
+            "  coral archive run --before 7d --status crashed --apply        Old crashes only\n"
+            "  coral archive undo abc123                                     Un-archive one attempt"
+        ),
+        formatter_class=_CommandHelpFormatter,
+    )
+    _add_run_args(p_archive)
+    p_archive.add_argument("--workdir", help="Working directory (default: cwd)")
+    arch_sub = p_archive.add_subparsers(dest="archive_command")
+
+    arch_list = arch_sub.add_parser("list", help="Show every currently-archived attempt")
+    _add_run_args(arch_list)
+    arch_list.add_argument("--workdir", help="Working directory (default: cwd)")
+
+    arch_run = arch_sub.add_parser("run", help="Archive attempts matching criteria")
+    arch_run.add_argument(
+        "--score-below",
+        type=float,
+        default=None,
+        help="Archive attempts whose score is below this value",
+    )
+    arch_run.add_argument(
+        "--before",
+        type=str,
+        default=None,
+        help="Archive attempts older than this (ISO-8601, or relative like '30d')",
+    )
+    arch_run.add_argument(
+        "--status",
+        type=str,
+        default=None,
+        help="Comma-separated status set (e.g. 'crashed,timeout')",
+    )
+    arch_run.add_argument(
+        "--reason",
+        type=str,
+        default=None,
+        help="Free-form reason stamped on archived attempts (default: criteria summary)",
+    )
+    arch_run.add_argument(
+        "--apply",
+        action="store_true",
+        default=False,
+        help="Actually write the archive flag (default: dry-run, only print matches)",
+    )
+    _add_run_args(arch_run)
+    arch_run.add_argument("--workdir", help="Working directory (default: cwd)")
+
+    arch_undo = arch_sub.add_parser("undo", help="Un-archive a single attempt")
+    arch_undo.add_argument("hash", help="Commit hash or prefix")
+    _add_run_args(arch_undo)
+    arch_undo.add_argument("--workdir", help="Working directory (default: cwd)")
+
     # --- Parse and dispatch ---
 
     args = parser.parse_args()
@@ -502,10 +646,12 @@ Run 'coral <command> --help' for details on any command."""
         sys.exit(0)
 
     # Lazy imports for fast startup
+    from coral.cli.archive import cmd_archive
     from coral.cli.author import cmd_init, cmd_validate
     from coral.cli.eval import cmd_checkout, cmd_diff, cmd_eval, cmd_revert, cmd_wait
     from coral.cli.heartbeat import cmd_heartbeat
-    from coral.cli.query import cmd_log, cmd_notes, cmd_runs, cmd_show, cmd_skills
+    from coral.cli.query import cmd_lanes, cmd_log, cmd_notes, cmd_runs, cmd_show, cmd_skills
+    from coral.cli.regression import cmd_regression
     from coral.cli.start import cmd_resume, cmd_start, cmd_status, cmd_stop
     from coral.cli.ui import cmd_ui
 
@@ -520,10 +666,13 @@ Run 'coral <command> --help' for details on any command."""
         "checkout": cmd_checkout,
         "diff": cmd_diff,
         "heartbeat": cmd_heartbeat,
+        "regression": cmd_regression,
+        "archive": cmd_archive,
         "log": cmd_log,
         "show": cmd_show,
         "notes": cmd_notes,
         "skills": cmd_skills,
+        "lanes": cmd_lanes,
         "runs": cmd_runs,
         "init": cmd_init,
         "validate": cmd_validate,

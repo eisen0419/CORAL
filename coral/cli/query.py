@@ -38,6 +38,7 @@ def cmd_log(args: argparse.Namespace) -> None:
     count = getattr(args, "count", None) or 20
     show_all = getattr(args, "all", False)
     only_class = getattr(args, "budget_class", None)
+    include_archived = getattr(args, "include_archived", False)
     # Over-fetch when filtering, so the trimmed result still has up to `count`
     # rows even when many recent / top attempts happen to be tune or error.
     raw_n = count if (show_all or only_class) else max(count * 4, 40)
@@ -50,21 +51,30 @@ def cmd_log(args: argparse.Namespace) -> None:
         return [a for a in attempts if a.budget_class == BUDGET_CLASS_REAL]
 
     if args.search:
-        attempts = filter_attempts(search_attempts(str(coral_dir), args.search))[:count]
+        attempts = filter_attempts(
+            search_attempts(str(coral_dir), args.search, include_archived=include_archived)
+        )[:count]
         if attempts:
             print(f"Search results for '{args.search}':")
             print(format_leaderboard(attempts))
         else:
             print(f"No attempts matching '{args.search}'.")
     elif args.agent:
-        attempts = filter_attempts(get_agent_attempts(str(coral_dir), args.agent))[:count]
+        attempts = filter_attempts(get_agent_attempts(str(coral_dir), args.agent))
+        if not include_archived:
+            from coral.hub.archive import is_archived
+
+            attempts = [a for a in attempts if not is_archived(a)]
+        attempts = attempts[:count]
         if attempts:
             print(f"Attempts by {args.agent}:")
             print(format_leaderboard(attempts))
         else:
             print(f"No attempts by {args.agent}.")
     elif args.recent:
-        attempts = filter_attempts(get_recent(str(coral_dir), n=raw_n))[:count]
+        attempts = filter_attempts(
+            get_recent(str(coral_dir), n=raw_n, include_archived=include_archived)
+        )[:count]
         if attempts:
             print(f"Recent {len(attempts)} attempt(s):")
             print(format_leaderboard(attempts))
@@ -72,7 +82,12 @@ def cmd_log(args: argparse.Namespace) -> None:
             print("No attempts yet.")
     else:
         attempts = filter_attempts(
-            get_leaderboard(str(coral_dir), top_n=raw_n, direction=direction)
+            get_leaderboard(
+                str(coral_dir),
+                top_n=raw_n,
+                direction=direction,
+                include_archived=include_archived,
+            )
         )[:count]
         if attempts:
             print(f"Leaderboard (top {len(attempts)}):")
@@ -119,6 +134,26 @@ def cmd_show(args: argparse.Namespace) -> None:
     if data.get("feedback"):
         print(f"Feedback: {data['feedback']}")
 
+    # Failure bundle (crash / timeout / regression) — print a short summary
+    # so the user doesn't have to read the JSON to know there's diagnostic
+    # context available.
+    fb_relpath = data.get("metadata", {}).get("failure_bundle")
+    if fb_relpath:
+        from coral.hub.failures import read_meta, read_stderr_tail
+
+        bundle_meta = read_meta(coral_dir, data["commit_hash"])
+        print("\n--- Failure bundle ---")
+        print(f"Path:    .coral/public/{fb_relpath}/")
+        if bundle_meta:
+            print(f"Kind:    {bundle_meta.get('kind', '?')}")
+            if bundle_meta.get("summary"):
+                print(f"Summary: {bundle_meta['summary']}")
+            if bundle_meta.get("regressed_fixtures"):
+                print(f"Broke:   {', '.join(bundle_meta['regressed_fixtures'])}")
+        tail = read_stderr_tail(coral_dir, data["commit_hash"], max_bytes=2048)
+        if tail:
+            print(f"\nstderr (tail):\n{tail}")
+
     commit = data["commit_hash"]
     git_args = ["git", "show", commit]
     if not getattr(args, "diff", False):
@@ -131,6 +166,28 @@ def cmd_show(args: argparse.Namespace) -> None:
     if result.returncode == 0:
         label = "Diff" if getattr(args, "diff", False) else "Summary"
         print(f"\n--- {label} ---\n{result.stdout}")
+
+
+def cmd_lanes(args: argparse.Namespace) -> None:
+    """List active focus-note lanes (what each agent has publicly committed to).
+
+    Examples:
+      coral lanes                   List all active lanes
+    """
+    from coral.hub.lanes import list_active_lanes
+
+    coral_dir = find_coral_dir(getattr(args, "task", None), getattr(args, "run", None))
+    lanes = list_active_lanes(coral_dir)
+    if not lanes:
+        print("No active focus notes found in this run.")
+        print("Agents declare lanes via {shared_dir}/notes/focus-*.md (see CORAL.md).")
+        return
+    print(f"Active lanes ({len(lanes)}):")
+    width = max(len(lane.lane) for lane in lanes) + 2
+    for lane in lanes:
+        posture = f"  posture={lane.posture}" if lane.posture else ""
+        creator = f"  by {lane.creator}" if lane.creator else ""
+        print(f"  {lane.lane.ljust(width)}{creator}{posture}  ({lane.filename})")
 
 
 def cmd_notes(args: argparse.Namespace) -> None:

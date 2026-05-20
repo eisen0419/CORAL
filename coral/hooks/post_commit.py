@@ -15,6 +15,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from coral.config import CoralConfig
+from coral.hooks.pre_commit import (
+    SecretsBlockedError,
+    enforce_no_secrets,
+    unstage_all,
+)
 from coral.hub.attempts import (
     agent_in_grader_queue,
     count_agent_pending,
@@ -36,9 +41,8 @@ logger = logging.getLogger(__name__)
 _POLL_INTERVAL_SEC = 0.2
 
 
-def _git_add_and_commit(message: str, workdir: str) -> str:
-    """Stage all changes and commit. Returns the new commit hash."""
-    # Stage all changes
+def _git_stage_all(workdir: str) -> None:
+    """`git add -A`. Raises if the index is empty afterward (nothing to commit)."""
     result = subprocess.run(
         ["git", "add", "-A"],
         capture_output=True,
@@ -48,7 +52,6 @@ def _git_add_and_commit(message: str, workdir: str) -> str:
     if result.returncode != 0:
         raise RuntimeError(f"git add failed: {result.stderr}")
 
-    # Check if there's anything to commit
     status = subprocess.run(
         ["git", "diff", "--cached", "--quiet"],
         capture_output=True,
@@ -57,7 +60,9 @@ def _git_add_and_commit(message: str, workdir: str) -> str:
     if status.returncode == 0:
         raise RuntimeError("Nothing to commit — no changes detected.")
 
-    # Commit
+
+def _git_commit_staged(message: str, workdir: str) -> str:
+    """Commit the current index. Returns the new commit hash."""
     result = subprocess.run(
         ["git", "commit", "-m", message],
         capture_output=True,
@@ -67,7 +72,6 @@ def _git_add_and_commit(message: str, workdir: str) -> str:
     if result.returncode != 0:
         raise RuntimeError(f"git commit failed: {result.stderr}")
 
-    # Get the commit hash
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         capture_output=True,
@@ -75,6 +79,15 @@ def _git_add_and_commit(message: str, workdir: str) -> str:
         cwd=workdir,
     )
     return result.stdout.strip()
+
+
+def _git_add_and_commit(message: str, workdir: str) -> str:
+    """Backward-compat wrapper. New code should call `_git_stage_all` +
+    secret scan + `_git_commit_staged` directly. This shim does not run the
+    secret scan — it's preserved only for older tests that call it directly.
+    """
+    _git_stage_all(workdir)
+    return _git_commit_staged(message, workdir)
 
 
 def _get_parent_hash(commit_hash: str, cwd: str) -> str | None:
@@ -129,6 +142,7 @@ def submit_eval(
     wait: bool = True,
     poll_timeout: float | None = None,
     tune: bool = False,
+    allow_secrets: bool = False,
 ) -> Attempt:
     """Stage changes, commit with message, write a pending attempt record.
 
@@ -142,6 +156,15 @@ def submit_eval(
     (``budget_class="tune"`` on its metadata). The grader still runs and the
     score is recorded, but the manager will not count it toward the agent's
     plateau / heartbeat budget — see issue #73.
+
+    If ``allow_secrets`` is False (default), a pre-commit secret scan runs
+    after staging; any credential-shaped content blocks the commit
+    (``SecretsBlockedError``) and the staging area is rolled back so the
+    agent can fix the leak. Passing True flips to warn mode: hits are logged
+    + recorded in ``attempt.metadata["secret_hits"]`` but the commit
+    proceeds. Use sparingly — only when a fixture legitimately needs a
+    sigil that looks like a credential (e.g. HSM mock with a real-shaped
+    PEM header).
 
     This is the core of `coral eval -m "description"` on the agent side.
     The grader itself runs asynchronously in `coral.grader.daemon`.
@@ -177,8 +200,24 @@ def submit_eval(
                 f"(limit: {pending_limit}). {wait_hint}"
             )
 
-    # Git add + commit
-    commit_hash = _git_add_and_commit(message, str(workdir_path))
+    # Git add (split from commit so we can scan the index for secrets first).
+    _git_stage_all(str(workdir_path))
+
+    # Pre-commit secret scan. Default policy is fail-closed; agents pass
+    # `allow_secrets=True` (CLI: `--allow-secrets`) only when a fixture
+    # legitimately contains a credential-shaped sigil.
+    secret_hits: list[str] = []
+    try:
+        scan = enforce_no_secrets(str(workdir_path), strict=not allow_secrets)
+        secret_hits = scan.all_hits
+    except SecretsBlockedError:
+        # Roll back staging so the agent's working tree is left exactly as
+        # it was — they can fix the leak and re-run `coral eval` without
+        # having to deal with a half-baked index.
+        unstage_all(str(workdir_path))
+        raise
+
+    commit_hash = _git_commit_staged(message, str(workdir_path))
     parent_hash = _get_parent_hash(commit_hash, str(workdir_path))
 
     # Checkpoint shared state at submission time (captures agent's current notes/skills).
@@ -197,9 +236,13 @@ def submit_eval(
 
     # Write pending record. The grader daemon will observe this and fill in
     # score/status/feedback asynchronously.
-    metadata: dict = {}
+    metadata: dict[str, object] = {}
     if tune:
         metadata["budget_class"] = BUDGET_CLASS_TUNE
+    if secret_hits:
+        # Warn-mode allowed the commit through; persist the hits so audit/dashboard
+        # can flag the attempt even after the fact.
+        metadata["secret_hits"] = secret_hits
     attempt = Attempt(
         commit_hash=commit_hash,
         agent_id=agent_id,

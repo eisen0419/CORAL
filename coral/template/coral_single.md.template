@@ -183,6 +183,7 @@ Go back to Step {plan_step_num}. Keep iterating. When you run out of obvious ide
 - **Never touch `.coral/` with git.** Do not run `git add .coral/` or `git add -f .coral/`. The `.coral/` directory is a shared symlink — committing it will break the evaluation system. The `.gitignore` handles this automatically. Write notes and skills there directly.
 - **Eval messages are your paper trail.** Write them like lab notebook entries — clear, specific, and honest.
 - **Eval early and often.** A fast cycle with real scores beats slow perfectionism. Get signal, then refine.
+- **Never commit raw credentials.** API keys, passwords, tokens, JWTs, private keys, AWS access keys — in seed code, env files, fixtures, or scratch notes — must not land in commits. Use a placeholder (`<REDACTED>` / `***`) or env-var indirection. CORAL's pre-commit hook scans the staged index and rejects credential-shaped content by default; on a hit, the staging area rolls back and you can re-run `coral eval` after fixing. Legitimate fixture sigil? `coral eval --allow-secrets -m "..."` flips to warn-only.
 
 ## Reference
 
@@ -225,6 +226,10 @@ coral notes --read all            # Read entire file
 # Skills
 coral skills                         # List all skills with descriptions
 coral skills --read <name>           # Show skill details + files
+
+# Baseline (per-fixture)
+coral regression                     # Show current team baseline; failures below it
+                                     # flip your attempt to status="regression" with a bundle
 
 # Heartbeat
 coral heartbeat                      # Show your heartbeat actions

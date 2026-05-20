@@ -97,12 +97,25 @@ def read_attempts(coral_dir: str | Path) -> list[Attempt]:
     return attempts
 
 
+def _is_archived(a: Attempt) -> bool:
+    return bool((a.metadata or {}).get("archived"))
+
+
 def get_leaderboard(
-    coral_dir: str | Path, top_n: int = 20, direction: str = "maximize"
+    coral_dir: str | Path,
+    top_n: int = 20,
+    direction: str = "maximize",
+    include_archived: bool = False,
 ) -> list[Attempt]:
-    """Get top N attempts sorted by score. Direction controls sort order."""
+    """Get top N attempts sorted by score. Direction controls sort order.
+
+    Archived attempts (see ``coral.hub.archive``) are filtered out by default;
+    pass ``include_archived=True`` to bring them back.
+    """
     attempts = read_attempts(coral_dir)
     scored = [a for a in attempts if a.score is not None]
+    if not include_archived:
+        scored = [a for a in scored if not _is_archived(a)]
     descending = direction != "minimize"
     scored.sort(key=lambda a: a.score or 0.0, reverse=descending)
     return scored[:top_n]
@@ -156,9 +169,13 @@ def count_agent_pending(
     )
 
 
-def get_recent(coral_dir: str | Path, n: int = 10) -> list[Attempt]:
-    """Get N most recent attempts (by timestamp)."""
+def get_recent(
+    coral_dir: str | Path, n: int = 10, include_archived: bool = False
+) -> list[Attempt]:
+    """Get N most recent attempts (by timestamp). Hides archived by default."""
     attempts = read_attempts(coral_dir)
+    if not include_archived:
+        attempts = [a for a in attempts if not _is_archived(a)]
     attempts.sort(key=lambda a: a.timestamp, reverse=True)
     return attempts[:n]
 
@@ -179,11 +196,16 @@ def per_agent_class_counts(coral_dir: str | Path) -> dict[str, dict[str, int]]:
     return counts
 
 
-def search_attempts(coral_dir: str | Path, query: str) -> list[Attempt]:
-    """Full-text search over attempt titles, feedback, and status."""
+def search_attempts(
+    coral_dir: str | Path, query: str, include_archived: bool = False
+) -> list[Attempt]:
+    """Full-text search over attempt titles, feedback, and status. Hides
+    archived attempts by default."""
     query_lower = query.lower()
     results = []
     for attempt in read_attempts(coral_dir):
+        if not include_archived and _is_archived(attempt):
+            continue
         text = f"{attempt.title} {attempt.feedback} {attempt.status}".lower()
         if query_lower in text:
             results.append(attempt)

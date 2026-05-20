@@ -110,6 +110,29 @@ class TaskGrader(ABC):
         d.mkdir(parents=True, exist_ok=True)
         return d
 
+    def write_failure_log(self, filename: str, content: str) -> Path:
+        """Drop a diagnostic file into this attempt's failure bundle directory.
+
+        Use during ``evaluate()`` when the grader has detected a problem the
+        agent should be able to inspect after the fact — fixture-specific
+        stderr, partial-pass breakdown, weird output shape, etc. The daemon
+        writes its own bundle for crashes / timeouts / regressions; this is
+        for grader-authored diagnostics on top.
+
+        Path: ``.coral/public/failures/<commit_hash>/<filename>``. The
+        relative path ``failures/<commit_hash>`` is stamped into the
+        attempt's ``metadata.failure_bundle`` only when the daemon ultimately
+        decides the attempt failed — grader-authored logs written for an
+        attempt that ends up passing are harmless extras.
+        """
+        from coral.hub.failures import failure_bundle_dir
+
+        coral_dir = Path(self.private_dir).parent
+        bundle = failure_bundle_dir(coral_dir, Path(self.codebase_path).name)
+        path = bundle / filename
+        path.write_text(content)
+        return path
+
     def eval_logs_worktree_path(self, abs_path: Path) -> Path:
         """Return an eval_logs absolute path as `eval_logs/<...>` (runtime-agnostic).
 

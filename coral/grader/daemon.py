@@ -39,8 +39,23 @@ from coral.hub.attempts import (
     read_attempts,
     write_attempt,
 )
+from coral.hub.failures import (
+    KIND_CRASHED,
+    KIND_REGRESSION,
+    KIND_TIMEOUT,
+    bundle_relpath,
+    write_failure_bundle,
+)
+from coral.hub.regressions import (
+    REGRESSION_CHECK_PASS,
+    REGRESSION_STATUS,
+    check_against_baseline,
+    maybe_seed_baseline,
+    promote,
+)
 from coral.types import (
     BUDGET_CLASS_GRADER_ERROR,
+    BUDGET_CLASS_REAL,
     Attempt,
     Task,
     get_budget_class,
@@ -316,7 +331,8 @@ def _grade_one(
     score: float | None = None
     status = "crashed"
     feedback = ""
-    metadata: dict = {}
+    metadata: dict[str, object] = {}
+    score_breakdown: dict[str, float] = {}
 
     try:
         _add_isolated_worktree(repo_dir, attempt.commit_hash, checkout_path)
@@ -331,6 +347,21 @@ def _grade_one(
             score = bundle.aggregated
             feedback = _build_feedback(bundle)
             metadata = dict(getattr(bundle, "metadata", None) or {})
+            # Preserve per-fixture scores so downstream tooling (regression
+            # promote, dashboard breakdown view) can read named values, not
+            # just the aggregate.
+            bundle_scores = getattr(bundle, "scores", None) or {}
+            if bundle_scores:
+                for name, s in bundle_scores.items():
+                    v = getattr(s, "value", None)
+                    if v is None:
+                        continue
+                    try:
+                        score_breakdown[name] = float(v)
+                    except (TypeError, ValueError):
+                        continue
+                if score_breakdown:
+                    metadata["score_breakdown"] = score_breakdown
             status = _compute_status(
                 score,
                 attempt.agent_id,
@@ -338,6 +369,62 @@ def _grade_one(
                 coral_dir,
                 minimize,
             )
+            # --- Regression memory --------------------------------------- #
+            # Compare per-fixture scores against the team baseline.
+            # Tune-mode and grader-error attempts skip the check (tune runs a
+            # different workload, so its scores are not on the same scale).
+            if budget_class == BUDGET_CLASS_REAL:
+                check = check_against_baseline(coral_dir, bundle)
+                metadata["regression_check"] = check.status
+                if check.failed:
+                    metadata["regressed_fixtures"] = check.regressed_fixtures
+                    # Baseline regression dominates whatever _compute_status
+                    # decided — the agent broke a previously-held capability.
+                    status = REGRESSION_STATUS
+                    feedback = (
+                        f"Regression: fixtures {', '.join(check.regressed_fixtures)} "
+                        f"fell below baseline. Previous: see "
+                        f".coral/public/regressions/baseline.json.\n{feedback}"
+                    ).strip()
+                    # Drop a failure bundle so the agent can inspect what they broke.
+                    try:
+                        write_failure_bundle(
+                            coral_dir,
+                            attempt.commit_hash,
+                            kind=KIND_REGRESSION,
+                            agent_id=attempt.agent_id,
+                            summary=(f"regressed on: {', '.join(check.regressed_fixtures)}"),
+                            metric_breakdown=score_breakdown or None,
+                            regressed_fixtures=check.regressed_fixtures,
+                        )
+                        metadata["failure_bundle"] = bundle_relpath(attempt.commit_hash)
+                    except OSError:
+                        logger.exception(
+                            "Failed to write regression failure bundle for %s",
+                            attempt.commit_hash[:12],
+                        )
+                elif check.status == REGRESSION_CHECK_PASS and status == "improved":
+                    # All fixtures held or improved AND aggregate improved →
+                    # promote this attempt as the new baseline.
+                    promote(
+                        coral_dir,
+                        bundle,
+                        attempt.commit_hash,
+                        by=attempt.agent_id,
+                        event="promote",
+                        minimize=minimize,
+                    )
+                elif check.status == "none" and status == "improved":
+                    # No baseline yet — seed it from this attempt's bundle.
+                    maybe_seed_baseline(
+                        coral_dir,
+                        bundle,
+                        attempt.commit_hash,
+                        by=attempt.agent_id,
+                        minimize=minimize,
+                    )
+                if check.missing_fixtures:
+                    metadata["baseline_missing_fixtures"] = check.missing_fixtures
         finally:
             _remove_worktree(repo_dir, checkout_path)
     except TimeoutError:
@@ -345,11 +432,39 @@ def _grade_one(
         status = "timeout"
         feedback = f"Eval timed out after {timeout}s."
         budget_class = BUDGET_CLASS_GRADER_ERROR
+        try:
+            write_failure_bundle(
+                coral_dir,
+                attempt.commit_hash,
+                kind=KIND_TIMEOUT,
+                agent_id=attempt.agent_id,
+                summary=feedback,
+                extra={"timeout_seconds": timeout},
+            )
+            metadata["failure_bundle"] = bundle_relpath(attempt.commit_hash)
+        except OSError:
+            logger.exception(
+                "Failed to write timeout failure bundle for %s", attempt.commit_hash[:12]
+            )
     except Exception as e:
         logger.exception("Grader crashed on %s", attempt.commit_hash[:12])
         status = "crashed"
         feedback = str(e)
         budget_class = BUDGET_CLASS_GRADER_ERROR
+        try:
+            write_failure_bundle(
+                coral_dir,
+                attempt.commit_hash,
+                kind=KIND_CRASHED,
+                agent_id=attempt.agent_id,
+                summary=str(e)[:200],
+                stderr=traceback.format_exc(),
+            )
+            metadata["failure_bundle"] = bundle_relpath(attempt.commit_hash)
+        except OSError:
+            logger.exception(
+                "Failed to write crash failure bundle for %s", attempt.commit_hash[:12]
+            )
 
     # Carry forward any pending metadata the grader bundle didn't overwrite,
     # then stamp the final budget_class (always wins over any pending value).

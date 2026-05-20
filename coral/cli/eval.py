@@ -17,11 +17,13 @@ _WAIT_POLL_INTERVAL_SEC = 0.2
 def cmd_eval(args: argparse.Namespace) -> None:
     """Stage changes, commit, and submit evaluation (blocking by default)."""
     from coral.hooks.post_commit import submit_eval
+    from coral.hooks.pre_commit import SecretsBlockedError
 
     agent_id = args.agent or read_agent_id()
     wait = getattr(args, "wait", True)
     timeout = getattr(args, "timeout", None)
     tune = getattr(args, "tune", False)
+    allow_secrets = getattr(args, "allow_secrets", False)
 
     try:
         attempt = submit_eval(
@@ -31,7 +33,13 @@ def cmd_eval(args: argparse.Namespace) -> None:
             wait=wait,
             poll_timeout=timeout,
             tune=tune,
+            allow_secrets=allow_secrets,
         )
+    except SecretsBlockedError as e:
+        # Distinct exit code so wrappers / agents can tell secrets from other
+        # commit failures.
+        print(f"\nError: {e}\n", file=sys.stderr)
+        sys.exit(3)
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

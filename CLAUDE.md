@@ -28,8 +28,14 @@ Key concepts:
 | `coral/gateway/` | Optional LiteLLM gateway (`server.py`, `middleware.py`, `config.py`) for intercepting agent model traffic |
 | `coral/web/` | Starlette web dashboard (`app.py`, `api.py`, `events.py`, `logs.py`, `static/`) |
 | `coral/cli/` | CLI package: `start.py`, `query.py`, `eval.py`, `heartbeat.py`, `ui.py`, `author.py`, `validation.py`, `_helpers.py` |
+| `coral/web/` | Starlette dashboard backend — `app.py` (Starlette routes), `api.py`, `events.py` (SSE), `logs.py`, `translate.py` (on-the-fly LLM i18n proxy), `static/` (built frontend assets) |
+| `web/` | **Separate** React 19 + Vite + TypeScript + Tailwind dashboard frontend. `npm run build` outputs to `../coral/web/static/`. Don't confuse with `coral/web/`. |
 | `examples/` | Task configs (circle_packing, swebench-verified, kernel_engineering, mnist, ...) — each is a `task.yaml` + `seed/` + `eval/grader.py` (or packaged grader via `entrypoint`) |
 | `tests/` | Pytest suite (config, grader, hooks, hub, manager reliability, daemon, workspace, ...) |
+| `docs/` | Next.js documentation site (powers docs.coralxyz.com) — independent npm project |
+| `docker/{claude,codex,opencode}/` | Dockerfile + entrypoint.sh per runtime — used when running CORAL itself in containers (note: Harbor-based graders can't run inside Docker, see README) |
+| `blog/` | Static blog assets + `index.html`, deployed via `.github/workflows/deploy-blog.yml` |
+| `install.sh` | Global installer (`uv tool install --force git+...`), invoked by the curl one-liner in README |
 
 ## How It Works
 
@@ -76,10 +82,16 @@ Each agent loop:
 
 ## Tech Stack
 
-- **Python 3.11+**, Hatchling build, **uv** for environment management.
-- **Core deps**: `pyyaml`, `omegaconf`, `starlette` (dashboard).
-- **Optional extras**: `swebench`, `datasets`, `docker`, `harbor` (heavyweight task graders).
-- **Runtimes** are external CLIs invoked as subprocesses — Claude Code (`claude`), Codex (`codex`), Cursor Agent (`cursor-agent`), Kiro (`kiro`), OpenCode (`opencode`).
+- **Python 3.11+** (`<3.14`), Hatchling + `hatch-vcs` build, **uv** for environment management.
+- **Core deps** (always installed): `pyyaml`, `omegaconf`, `httpx`, `uvicorn`, `litellm[proxy]==1.82.3`, `pip`.
+- **Extras** declared in `pyproject.toml`:
+  - `dev` — `pytest`, `pytest-asyncio`, `ruff`, `mypy`
+  - `ui` — `starlette`, `uvicorn[standard]`, `pyyaml` (dashboard)
+  - `all` = `dev` + `ui`
+  - Heavy task-grader deps (`swebench`, `datasets`, `docker`, `harbor`, ...) are **not** top-level extras — they install per-task through `grader.setup` into `.coral/private/grader_venv/`.
+- **Runtimes** are external CLIs invoked as subprocesses — Claude Code (`claude`), Codex (`codex`), Cursor Agent (`cursor-agent`), Kiro (`kiro`), OpenCode (`opencode`). The `agents.runtime` config key accepts `cursor` / `cursor-agent` as aliases for `cursor_agent` (see `coral/agent/registry.py`).
+- **Frontend**: React 19 + Vite + TypeScript + Tailwind, in `web/`; built static bundle is served by `coral/web/`.
+- **Lint/type config** (`pyproject.toml`): ruff `line-length=100`, lint rules `E F I N W UP`, ignore `E501`; mypy `strict = true`; pytest `asyncio_mode = "auto"`, `testpaths = ["tests"]`.
 
 ## Commands
 
@@ -126,8 +138,21 @@ coral heartbeat [set|remove|reset]                # Inspect or rewrite per-agent
 
 # Tests + lint
 uv run pytest tests/ -v
+uv run pytest tests/test_grader.py::test_subprocess_grader -v   # Single test
 uv run ruff check .
 uv run ruff format .
+uv run mypy coral/                                # Strict mode (configured in pyproject)
+
+# Web dashboard frontend (separate npm project under web/)
+cd web && npm install
+npm run dev                                       # Vite dev server with HMR
+npm run build                                     # Builds into ../coral/web/static/
+npm run lint                                      # ESLint
+
+# Global install (end-user path; not for dev work in this repo)
+curl -fsSL https://raw.githubusercontent.com/Human-Agent-Society/CORAL/main/install.sh | sh
+# or pin a version:
+CORAL_VERSION=v0.5.0 curl -fsSL .../install.sh | sh
 ```
 
 ## Code Patterns
@@ -182,6 +207,10 @@ uv run ruff format .
 | `coral/hooks/post_commit.py` | `submit_eval()` — git add/commit + write pending attempt + optional poll |
 | `coral/template/coral_md.py` | Renders the CORAL.md each agent reads |
 | `coral/cli/__init__.py` | Top-level argparse + dispatch (18 commands) |
+| `coral/web/translate.py` | Backend proxy for on-the-fly LLM translation of dashboard content — API keys never reach the browser |
+| `web/src/` | Vite dashboard frontend (`App.tsx`, `pages/`, `components/`, `hooks/`, `lib/`, `locales/`) |
+| `install.sh` | `uv tool install` shim — used by the README curl one-liner, not by in-repo dev |
+| `.github/workflows/` | `release.yml` (PyPI/GitHub release), `deploy-blog.yml` (GH Pages) |
 
 ## Developer Workflows
 

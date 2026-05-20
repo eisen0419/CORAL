@@ -1316,7 +1316,18 @@ class AgentManager:
 
                     prompts = ["\n".join(header_lines)]
                     action_names = [a.name for a in actions]
-                    prompts.extend(a.prompt for a in actions if a.prompt)
+                    # Augment pivot prompts with the team's active lane set so
+                    # the agent has concrete lanes to avoid — not just the
+                    # generic "find an unexplored idea" exhortation.
+                    from coral.hub.lanes import augment_pivot_prompt
+
+                    for a in actions:
+                        if not a.prompt:
+                            continue
+                        if a.name == "pivot":
+                            prompts.append(augment_pivot_prompt(a.prompt, self.paths.coral_dir))
+                        else:
+                            prompts.append(a.prompt)
 
                     combined_prompt = "\n\n".join(prompts)
                     names = ", ".join(action_names)
