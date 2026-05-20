@@ -20,6 +20,13 @@ export default function NoteCard({ note, expanded, onToggle, variant = "compact"
 
   const isTitleStub = titleTr.status === "translating" || titleTr.status === "disabled";
   const isBodyStub = bodyTr.status === "translating" || bodyTr.status === "disabled";
+  const isTitleErr = titleTr.status === "error";
+  const isBodyErr = bodyTr.status === "error";
+
+  const stopAndRetry = (retry: () => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    retry();
+  };
 
   return (
     <div className="border-b border-border last:border-b-0">
@@ -50,7 +57,9 @@ export default function NoteCard({ note, expanded, onToggle, variant = "compact"
               variant === "full" ? "text-[14px]" : "text-[13px]"
             } font-semibold leading-snug ${variant === "full" ? "" : "truncate"} ${
               isTitleStub ? "text-muted-fg italic" : ""
-            }`}
+            } ${isTitleErr ? "text-red-600 dark:text-red-400 cursor-pointer hover:underline" : ""}`}
+            onClick={isTitleErr ? stopAndRetry(titleTr.retry) : undefined}
+            title={isTitleErr ? "点击重试翻译" : undefined}
           >
             {titleTr.text}
           </p>
@@ -68,7 +77,9 @@ export default function NoteCard({ note, expanded, onToggle, variant = "compact"
                 variant === "full" ? "text-[13px]" : "text-[12px]"
               } leading-relaxed whitespace-pre-wrap ${
                 isBodyStub ? "text-muted-fg italic" : "text-muted-fg"
-              }`}
+              } ${isBodyErr ? "text-red-600 dark:text-red-400 cursor-pointer hover:underline" : ""}`}
+              onClick={isBodyErr ? stopAndRetry(bodyTr.retry) : undefined}
+              title={isBodyErr ? "点击重试翻译" : undefined}
             >
               {bodyTr.text}
             </div>

@@ -47,7 +47,15 @@ export default function AttemptRow({ attempt: a, rank, expanded, onToggle, highl
                     titleTr.status === "translating" || titleTr.status === "disabled"
                       ? "text-muted-fg italic"
                       : ""
+                  } ${
+                    titleTr.status === "error"
+                      ? "text-red-600 dark:text-red-400 cursor-pointer hover:underline"
+                      : ""
                   }`}
+                  onClick={
+                    titleTr.status === "error" ? () => titleTr.retry() : undefined
+                  }
+                  title={titleTr.status === "error" ? "点击重试翻译" : undefined}
                 >
                   {titleTr.text}
                 </p>
@@ -95,11 +103,27 @@ export default function AttemptRow({ attempt: a, rank, expanded, onToggle, highl
                   <p className="font-mono text-[10px] tracking-widest uppercase text-muted-fg mb-2">
                     {t("attempt.title_feedback")}
                   </p>
-                  <div className="border border-border rounded-lg p-4 bg-background">
+                  <div
+                    className={`border border-border rounded-lg p-4 bg-background ${
+                      feedbackTr.status === "error"
+                        ? "cursor-pointer hover:bg-muted/50"
+                        : ""
+                    }`}
+                    onClick={
+                      feedbackTr.status === "error"
+                        ? () => feedbackTr.retry()
+                        : undefined
+                    }
+                    title={feedbackTr.status === "error" ? "点击重试翻译" : undefined}
+                  >
                     <pre
                       className={`font-mono text-xs whitespace-pre-wrap leading-relaxed ${
                         feedbackTr.status === "translating" || feedbackTr.status === "disabled"
                           ? "text-muted-fg italic"
+                          : ""
+                      } ${
+                        feedbackTr.status === "error"
+                          ? "text-red-600 dark:text-red-400"
                           : ""
                       }`}
                     >

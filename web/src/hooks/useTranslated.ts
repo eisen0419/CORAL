@@ -136,7 +136,11 @@ export function useTranslated(
       return { text: "（翻译未启用，请打开设置）", status: "disabled", retry: () => setTick((n) => n + 1) };
     }
     if (status === "error") {
-      return { text: "翻译失败", status: "error", retry: () => setTick((n) => n + 1) };
+      return {
+        text: "翻译失败 · 点击重试",
+        status: "error",
+        retry: () => setTick((n) => n + 1),
+      };
     }
     return { text: TRANSLATING_PLACEHOLDER, status: "translating", retry: () => setTick((n) => n + 1) };
   }, [passThrough, safe, translated, status]);

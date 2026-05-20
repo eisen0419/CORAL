@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { api, type LogData, type LogTurn, type LogSession, type LogEntry, type RunStatus, type Attempt } from "../lib/api";
 import { useSSE } from "../hooks/useSSE";
 import StatusBadge from "../components/StatusBadge";
+import { useTranslated } from "../hooks/useTranslated";
 
 export default function Logs() {
   const { t } = useTranslation();
@@ -316,9 +317,83 @@ function SessionBlock({
   );
 }
 
-function TurnCard({ turn }: { turn: LogTurn }) {
+/**
+ * Renders an agent's chain-of-thought ("thinking") block. Long content
+ * is collapsed by default; the per-thinking expand toggle is local so
+ * sibling thinking entries don't share a single expanded state (the
+ * inline implementation had this bug).
+ *
+ * The `translate` prop is wired up to the parent TurnCard's opt-in
+ * Chinese translation. When false, we display the original English
+ * verbatim — keeping agent log volume out of the LLM provider unless
+ * the user explicitly opts in.
+ */
+function ThinkingEntry({ content, translate }: { content: string; translate: boolean }) {
   const { t } = useTranslation();
-  const [expandThinking, setExpandThinking] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const tr = useTranslated(content, translate ? "agent_log" : "identifier");
+  const isStub = tr.status === "translating" || tr.status === "disabled";
+  const isErr = tr.status === "error";
+  const display = tr.text;
+
+  return (
+    <div className="border-l-2 border-border pl-3">
+      <div className="font-mono text-[11px] text-muted-fg flex items-center gap-1.5">
+        <span className="tracking-widest uppercase">{t("logs.think")}</span>
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="hover:text-foreground underline decoration-dotted underline-offset-2"
+        >
+          {expanded ? "▲" : "▼"}
+        </button>
+      </div>
+      {expanded && (
+        <pre
+          className={`mt-1.5 font-mono text-[11px] leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto ${
+            isStub ? "text-muted-fg italic" : "text-muted-fg"
+          } ${isErr ? "text-red-600 dark:text-red-400 cursor-pointer" : ""}`}
+          onClick={isErr ? () => tr.retry() : undefined}
+          title={isErr ? "点击重试翻译" : undefined}
+        >
+          {display}
+        </pre>
+      )}
+      {!expanded && (
+        <p className="mt-0.5 font-mono text-[11px] text-muted-fg truncate opacity-50">
+          {display.split("\n")[0]}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Free-form agent prose. Same opt-in translation pattern. */
+function TextEntry({ content, translate }: { content: string; translate: boolean }) {
+  const tr = useTranslated(content, translate ? "agent_log" : "identifier");
+  const isStub = tr.status === "translating" || tr.status === "disabled";
+  const isErr = tr.status === "error";
+  return (
+    <div
+      className={`font-body text-[13px] leading-relaxed pl-1 ${
+        isStub ? "text-muted-fg italic" : ""
+      } ${isErr ? "text-red-600 dark:text-red-400 cursor-pointer hover:underline" : ""}`}
+      onClick={isErr ? () => tr.retry() : undefined}
+      title={isErr ? "点击重试翻译" : undefined}
+    >
+      {tr.text}
+    </div>
+  );
+}
+
+function TurnCard({ turn }: { turn: LogTurn }) {
+  const { i18n } = useTranslation();
+  // Opt-in translation for this turn's content (thinking + text).
+  // Off by default because agent log token volume is huge — letting
+  // it auto-translate when the user switches to Chinese would burn
+  // a lot of provider credit. Per-turn so the user can spot-check
+  // turns that look interesting without paying for the whole log.
+  const isZh = i18n.language.startsWith("zh");
+  const [translateThisTurn, setTranslateThisTurn] = useState(false);
 
   return (
     <div className="py-4 border-b border-border">
@@ -331,32 +406,25 @@ function TurnCard({ turn }: { turn: LogTurn }) {
             {((turn.usage.input_tokens || 0) + (turn.usage.cache_read || 0) + (turn.usage.cache_creation || 0)).toLocaleString()} in · {(turn.usage.output_tokens || 0).toLocaleString()} out
           </span>
         )}
+        {isZh && (
+          <button
+            onClick={() => setTranslateThisTurn((v) => !v)}
+            className={`ml-auto px-2 py-0.5 font-mono text-[10px] tracking-wider uppercase border rounded-md transition-colors duration-100 ${
+              translateThisTurn
+                ? "bg-foreground text-background border-foreground"
+                : "border-border text-muted-fg hover:text-foreground hover:bg-muted"
+            }`}
+            title="逐回合按需翻译，避免一次性把整页日志全送给 LLM"
+          >
+            {translateThisTurn ? "已翻译" : "翻译本回合"}
+          </button>
+        )}
       </div>
 
       {turn.entries.map((entry, i) => (
         <div key={i} className="mb-2">
           {entry.type === "thinking" && (
-            <div className="border-l-2 border-border pl-3">
-              <div className="font-mono text-[11px] text-muted-fg flex items-center gap-1.5">
-                <span className="tracking-widest uppercase">{t("logs.think")}</span>
-                <button
-                  onClick={() => setExpandThinking(!expandThinking)}
-                  className="hover:text-foreground underline decoration-dotted underline-offset-2"
-                >
-                  {expandThinking ? "▲" : "▼"}
-                </button>
-              </div>
-              {expandThinking && (
-                <pre className="mt-1.5 font-mono text-[11px] text-muted-fg leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto">
-                  {entry.content}
-                </pre>
-              )}
-              {!expandThinking && (
-                <p className="mt-0.5 font-mono text-[11px] text-muted-fg truncate opacity-50">
-                  {entry.content.split("\n")[0]}
-                </p>
-              )}
-            </div>
+            <ThinkingEntry content={entry.content} translate={translateThisTurn} />
           )}
 
           {entry.type === "tool_call" && (
@@ -375,9 +443,7 @@ function TurnCard({ turn }: { turn: LogTurn }) {
           )}
 
           {entry.type === "text" && (
-            <div className="font-body text-[13px] leading-relaxed pl-1">
-              {entry.content}
-            </div>
+            <TextEntry content={entry.content} translate={translateThisTurn} />
           )}
 
           {entry.type === "system" && (

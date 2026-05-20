@@ -34,28 +34,46 @@ export async function fetchBackendHealth(): Promise<BackendHealth> {
   return (await r.json()) as BackendHealth;
 }
 
+// Match the backend's httpx timeout in coral/web/translate.py.
+// Any single translation that hasn't returned in 60s is almost
+// certainly stuck — we surface that as an error so the user can
+// retry instead of staring at "翻译中…" forever.
+const FETCH_TIMEOUT_MS = 60_000;
+
 export async function translateRaw(
   text: string,
   s: TranslateSettings,
 ): Promise<TranslationResult> {
-  const r = await fetch("/api/translate", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      text,
-      provider: s.provider,
-      model: s.model,
-    }),
-  });
-  if (!r.ok) {
-    let detail = "";
-    try {
-      const body = await r.json();
-      detail = body.detail || body.error || "";
-    } catch {
-      /* ignore */
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const r = await fetch("/api/translate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text,
+        provider: s.provider,
+        model: s.model,
+      }),
+      signal: ac.signal,
+    });
+    if (!r.ok) {
+      let detail = "";
+      try {
+        const body = await r.json();
+        detail = body.detail || body.error || "";
+      } catch {
+        /* ignore */
+      }
+      throw new Error(`backend ${r.status}: ${detail.slice(0, 200)}`);
     }
-    throw new Error(`backend ${r.status}: ${detail.slice(0, 200)}`);
+    return (await r.json()) as TranslationResult;
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error(`translation timed out after ${FETCH_TIMEOUT_MS / 1000}s`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return (await r.json()) as TranslationResult;
 }

@@ -39,6 +39,7 @@ export default function SkillCard({ skill, variant = "compact" }: Props) {
       ? descTr.text
       : "";
   const isStub = !builtin && (descTr.status === "translating" || descTr.status === "disabled");
+  const isErr = !builtin && descTr.status === "error";
 
   if (variant === "full") {
     return (
@@ -48,7 +49,9 @@ export default function SkillCard({ skill, variant = "compact" }: Props) {
           <p
             className={`font-body text-[13px] mb-2 ${
               isStub ? "text-muted-fg italic" : "text-muted-fg"
-            }`}
+            } ${isErr ? "text-red-600 dark:text-red-400 cursor-pointer hover:underline" : ""}`}
+            onClick={isErr ? () => descTr.retry() : undefined}
+            title={isErr ? "点击重试翻译" : undefined}
           >
             {displayDesc}
           </p>
@@ -68,7 +71,9 @@ export default function SkillCard({ skill, variant = "compact" }: Props) {
         <p
           className={`font-body text-[12px] truncate ${
             isStub ? "text-muted-fg italic" : "text-muted-fg"
-          }`}
+          } ${isErr ? "text-red-600 dark:text-red-400 cursor-pointer hover:underline" : ""}`}
+          onClick={isErr ? () => descTr.retry() : undefined}
+          title={isErr ? "点击重试翻译" : undefined}
         >
           {displayDesc}
         </p>
