@@ -153,6 +153,28 @@ def cmd_show(args: argparse.Namespace) -> None:
         print(f"\n--- {label} ---\n{result.stdout}")
 
 
+def cmd_lanes(args: argparse.Namespace) -> None:
+    """List active focus-note lanes (what each agent has publicly committed to).
+
+    Examples:
+      coral lanes                   List all active lanes
+    """
+    from coral.hub.lanes import list_active_lanes
+
+    coral_dir = find_coral_dir(getattr(args, "task", None), getattr(args, "run", None))
+    lanes = list_active_lanes(coral_dir)
+    if not lanes:
+        print("No active focus notes found in this run.")
+        print("Agents declare lanes via {shared_dir}/notes/focus-*.md (see CORAL.md).")
+        return
+    print(f"Active lanes ({len(lanes)}):")
+    width = max(len(lane.lane) for lane in lanes) + 2
+    for lane in lanes:
+        posture = f"  posture={lane.posture}" if lane.posture else ""
+        creator = f"  by {lane.creator}" if lane.creator else ""
+        print(f"  {lane.lane.ljust(width)}{creator}{posture}  ({lane.filename})")
+
+
 def cmd_notes(args: argparse.Namespace) -> None:
     """Browse shared notes.
 

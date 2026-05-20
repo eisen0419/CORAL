@@ -51,6 +51,7 @@ _VISIBLE_COMMANDS = [
     "show",
     "notes",
     "skills",
+    "lanes",
     "runs",
     "ui",
     "eval",
@@ -112,6 +113,7 @@ Inspecting Results:
   show            Show details of a specific attempt
   notes           Browse shared notes
   skills          Browse shared skills
+  lanes           List active focus-note lanes (per-agent declared directions)
   runs            List runs (active only; --all for stopped)
 
 Dashboard:
@@ -307,6 +309,19 @@ Run 'coral <command> --help' for details on any command."""
     )
     p_notes.add_argument("--diff", metavar="HASH", help="Show diff for a checkpoint commit")
     _add_run_args(p_notes)
+
+    p_lanes = sub.add_parser(
+        "lanes",
+        help="List active focus-note lanes",
+        description=(
+            "Show every agent's currently-declared focus lane (from "
+            ".coral/public/notes/focus-*.md). Useful before picking your "
+            "own direction — same lane + same posture as a teammate "
+            "duplicates effort."
+        ),
+        formatter_class=_CommandHelpFormatter,
+    )
+    _add_run_args(p_lanes)
 
     p_skills = sub.add_parser(
         "skills",
@@ -558,7 +573,7 @@ Run 'coral <command> --help' for details on any command."""
     from coral.cli.author import cmd_init, cmd_validate
     from coral.cli.eval import cmd_checkout, cmd_diff, cmd_eval, cmd_revert, cmd_wait
     from coral.cli.heartbeat import cmd_heartbeat
-    from coral.cli.query import cmd_log, cmd_notes, cmd_runs, cmd_show, cmd_skills
+    from coral.cli.query import cmd_lanes, cmd_log, cmd_notes, cmd_runs, cmd_show, cmd_skills
     from coral.cli.regression import cmd_regression
     from coral.cli.start import cmd_resume, cmd_start, cmd_status, cmd_stop
     from coral.cli.ui import cmd_ui
@@ -579,6 +594,7 @@ Run 'coral <command> --help' for details on any command."""
         "show": cmd_show,
         "notes": cmd_notes,
         "skills": cmd_skills,
+        "lanes": cmd_lanes,
         "runs": cmd_runs,
         "init": cmd_init,
         "validate": cmd_validate,
