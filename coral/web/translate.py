@@ -38,16 +38,18 @@ _DEFAULT_MODELS: dict[str, str] = {
 }
 
 # Allowed models per provider — guards against the client injecting an
-# arbitrary string that costs more than expected.
-_ALLOWED_MODELS: dict[str, set[str]] = {
-    "deepseek": {"deepseek-chat", "deepseek-reasoner"},
-    "openai": {"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"},
-    "anthropic": {
+# arbitrary string that costs more than expected. Stored as lists so the
+# /health endpoint can serialize them straight to JSON; membership checks
+# inline a list -> set conversion (small enough that it's free).
+_ALLOWED_MODELS: dict[str, list[str]] = {
+    "deepseek": ["deepseek-chat", "deepseek-reasoner"],
+    "openai": ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"],
+    "anthropic": [
         "claude-haiku-4-5-20251001",
         "claude-sonnet-4-6",
         "claude-opus-4-7",
-    },
-    "zhipu": {"glm-4-flash", "glm-4-plus", "glm-4-air"},
+    ],
+    "zhipu": ["glm-4-flash", "glm-4-plus", "glm-4-air"],
 }
 
 _SYSTEM_PROMPT = (
